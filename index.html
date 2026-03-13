@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESA Search</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <h1>🔍 ESA Search</h1>
+
+  <div class="search-bar">
+    <input
+      type="text"
+      id="searchInput"
+      placeholder="Enter nickname or UID (e.g. 168951)…"
+      autocomplete="off"
+    />
+    <button id="searchBtn" onclick="doSearch()">Search</button>
+  </div>
+
+  <div class="search-bar">
+    <input
+      type="text"
+      id="areaInput"
+      placeholder="Search by area (e.g. Sea Point)…"
+      autocomplete="off"
+    />
+    <button id="areaBtn" onclick="doAreaSearch()">Search Area</button>
+  </div>
+
+  <div id="status"></div>
+  <div id="profiles-container"></div>
+  <div id="profile-details-container"></div>
+  <div id="images-container"></div>
+  <div id="selected-output"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
