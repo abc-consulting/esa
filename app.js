@@ -1,7 +1,7 @@
 // ─── CONFIGURATION ────────────────────────────────────────────────────────
 
 const BASE_URL = 'https://www.esa.co.za';
-const PROXY    = 'https://corsproxy.io/?';
+const PROXY    = 'https://api.allorigins.win/raw?url=';
 
 // ─── DOM REFERENCES ───────────────────────────────────────────────────────
 
