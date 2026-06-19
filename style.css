@@ -63,6 +63,93 @@ h1 {
 
 #status.error { color: #f87171; }
 
+#favorites-wrap {
+  max-width: 1200px;
+  margin: 0 auto 20px;
+  background: #16213e;
+  border: 1px solid #4a4a6a;
+  border-radius: 10px;
+  padding: 12px;
+}
+
+#favorites-wrap h2 {
+  font-size: 1rem;
+  color: #c084fc;
+  margin-bottom: 10px;
+}
+
+.favorites-empty {
+  color: #94a3b8;
+  font-size: 0.9rem;
+}
+
+.favorites-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.favorite-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #0f3460;
+  border: 1px solid #4a4a6a;
+  border-radius: 999px;
+  padding: 4px 6px 4px 4px;
+}
+
+.favorite-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #e0e0e0;
+  padding: 2px 8px 2px 2px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.favorite-link:hover {
+  background: #1a4a80;
+}
+
+.favorite-avatar {
+  width: 30px;
+  height: 30px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 1px solid #4a4a6a;
+  background: #16213e;
+}
+
+.favorite-label {
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.favorite-remove-x {
+  width: 22px;
+  height: 22px;
+  border: 1px solid #4a4a6a;
+  border-radius: 50%;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.favorite-remove-x:hover {
+  border-color: #f87171;
+  color: #f87171;
+}
+
 #profiles-container {
   display: flex;
   flex-wrap: wrap;
