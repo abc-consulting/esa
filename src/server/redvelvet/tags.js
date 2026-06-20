@@ -2,20 +2,20 @@
 
 const { fetchText, send } = require('../utils/http');
 const { stripTags, decodeHtmlEntities } = require('../utils/html');
-const { normalizeFetishName } = require('../utils/normalize');
-const { REDVELVET_FETISHES_URL, AREA_MAP_CACHE_TTL_MS } = require('../constants');
+const { normalizeTagName } = require('../utils/normalize');
+const { REDVELVET_TAGS_URL, AREA_MAP_CACHE_TTL_MS } = require('../constants');
 const { URL } = require('url');
 
-let fetishMapCache = null;
-let fetishMapCacheTime = 0;
+let tagMapCache = null;
+let tagMapCacheTime = 0;
 
-async function buildRedvelvetFetishHashMap() {
-  if (fetishMapCache && Date.now() - fetishMapCacheTime < AREA_MAP_CACHE_TTL_MS) {
-    return fetishMapCache;
+async function buildRedvelvetTagHashMap() {
+  if (tagMapCache && Date.now() - tagMapCacheTime < AREA_MAP_CACHE_TTL_MS) {
+    return tagMapCache;
   }
 
   try {
-    const html = await fetchText(REDVELVET_FETISHES_URL);
+    const html = await fetchText(REDVELVET_TAGS_URL);
     const map = new Map();
     const optionPattern = /<option\b[^>]*value="([^"]*\/escorts\/fetish_escorts[^"]*)"[^>]*>([\s\S]*?)<\/option>/gi;
     let match;
@@ -37,9 +37,9 @@ async function buildRedvelvetFetishHashMap() {
       }
 
       const pathname = parsed.pathname.toLowerCase();
-      if (pathname === '/escorts/fetish_escorts' && !parsed.search && normalizeFetishName(label) === 'all fetishes') continue;
+      if (pathname === '/escorts/fetish_escorts' && !parsed.search && normalizeTagName(label) === 'all tags') continue;
 
-      const key = normalizeFetishName(label);
+      const key = normalizeTagName(label);
       if (!key || map.has(key)) continue;
 
       map.set(key, {
@@ -49,26 +49,26 @@ async function buildRedvelvetFetishHashMap() {
       });
     }
 
-    fetishMapCache = map;
-    fetishMapCacheTime = Date.now();
-    console.log(`[INFO] Built RedVelvet fetish hash map with ${map.size} keys`);
+    tagMapCache = map;
+    tagMapCacheTime = Date.now();
+    console.log(`[INFO] Built RedVelvet tag hash map with ${map.size} keys`);
     return map;
   } catch (err) {
-    console.error('[ERROR] Failed to build RedVelvet fetish hash map:', err.message);
+    console.error('[ERROR] Failed to build RedVelvet tag hash map:', err.message);
     return new Map();
   }
 }
 
-async function resolveRedvelvetFetishUrl(tag, tagUrl = '') {
+async function resolveRedvelvetTagUrl(tag, tagUrl = '') {
   const direct = String(tagUrl || '').trim();
   if (/^https?:\/\/.*\/escorts\/fetish_escorts/i.test(direct)) {
     return direct;
   }
 
-  const normalizedTag = normalizeFetishName(tag);
+  const normalizedTag = normalizeTagName(tag);
   if (!normalizedTag) return '';
 
-  const map = await buildRedvelvetFetishHashMap();
+  const map = await buildRedvelvetTagHashMap();
   const exact = map.get(normalizedTag);
   if (exact?.url) return exact.url;
 
@@ -81,15 +81,15 @@ async function resolveRedvelvetFetishUrl(tag, tagUrl = '') {
   return '';
 }
 
-async function handleRedvelvetFetishes(req, res) {
+async function handleRedvelvetTags(req, res) {
   try {
-    const fetishMap = await buildRedvelvetFetishHashMap();
-    const fetishes = Array.from(fetishMap.values())
+    const tagMap = await buildRedvelvetTagHashMap();
+    const tags = Array.from(tagMap.values())
       .sort((a, b) => a.label.localeCompare(b.label));
 
     send(res, 200, JSON.stringify({
-      count: fetishes.length,
-      fetishes,
+      count: tags.length,
+      tags,
     }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'public, max-age=3600',
@@ -102,7 +102,7 @@ async function handleRedvelvetFetishes(req, res) {
 }
 
 module.exports = {
-  buildRedvelvetFetishHashMap,
-  resolveRedvelvetFetishUrl,
-  handleRedvelvetFetishes,
+  buildRedvelvetTagHashMap,
+  resolveRedvelvetTagUrl,
+  handleRedvelvetTags,
 };

@@ -4,41 +4,45 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="esa-image-relay-base-url" content="http://localhost:5510" />
-  <title>ESA Search</title>
+  <title>WG Search</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <h1>🔍 ESA Search</h1>
-
-  <div class="search-bar">
+  <nav class="topbar">
+    <span class="app-name">WG Search</span>
     <select id="siteSelect">
       <option value="esa">ESA</option>
       <option value="redvelvet">RedVelvet</option>
     </select>
-  </div>
+  </nav>
 
   <div class="search-bar">
     <input
       type="text"
       id="searchInput"
-      placeholder="Enter nickname or UID (e.g. 168951)…"
+      placeholder="Nickname or UID…"
       autocomplete="off"
     />
     <button id="searchBtn">Search</button>
-  </div>
-
-  <div class="search-bar">
     <input
       type="text"
       id="areaInput"
-      placeholder="Search by area (e.g. Sea Point)…"
+      placeholder="Area (e.g. Sea Point)…"
       autocomplete="off"
     />
     <button id="areaBtn">Search Area</button>
+    <div id="area-dropdown-wrap" class="multi-select-wrap" style="display:none">
+      <button id="areaDropdownBtn" class="multi-select-btn" type="button">Areas ▾</button>
+      <div id="areaDropdownPanel" class="multi-select-panel" style="display:none"></div>
+    </div>
+    <div id="tag-dropdown-wrap" class="multi-select-wrap" style="display:none">
+      <button id="tagDropdownBtn" class="multi-select-btn" type="button">Tags ▾</button>
+      <div id="tagDropdownPanel" class="multi-select-panel" style="display:none"></div>
+    </div>
   </div>
 
-    <div class="filter">
+  <div id="filter-bar" class="filter" style="display:none">
     <input
       type="text"
       id="filterInput"
@@ -46,17 +50,22 @@
       autocomplete="off"
     />
     <button id="filterBtn">Filter</button>
+    <div id="filter-chips"></div>
   </div>
 
   <div id="status"></div>
-  <div id="favorites-wrap">
-    <h2>Favorites</h2>
+  <details id="favorites-details">
+    <summary>Favorites</summary>
     <div id="favorites-container"></div>
+  </details>
+  <div id="content-layout">
+    <div id="profiles-container"></div>
+    <div id="main-area">
+      <div id="profile-details-container"></div>
+      <div id="images-container"></div>
+      <div id="selected-output"></div>
+    </div>
   </div>
-  <div id="profiles-container"></div>
-  <div id="profile-details-container"></div>
-  <div id="images-container"></div>
-  <div id="selected-output"></div>
 
   <script type="module" src="src/client/app.js"></script>
 </body>

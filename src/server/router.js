@@ -9,8 +9,9 @@ const {
   handleRedvelvetAreaLookup,
   handleRedvelvetAreaProfiles,
   handleRedvelvetAreas,
+  buildRedvelvetAreaHashMap,
 } = require('./redvelvet/areas');
-const { handleRedvelvetFetishes } = require('./redvelvet/fetishes');
+const { handleRedvelvetTags, buildRedvelvetTagHashMap } = require('./redvelvet/tags');
 const { handleRedvelvetProfileLookup, handleRedvelvetTagProfiles } = require('./redvelvet/profiles');
 
 const server = http.createServer(async (req, res) => {
@@ -51,8 +52,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.url && req.url.startsWith('/redvelvet-fetishes?')) {
-    await handleRedvelvetFetishes(req, res);
+  if (req.url && req.url.startsWith('/redvelvet-tags?')) {
+    await handleRedvelvetTags(req, res);
     return;
   }
 
@@ -71,4 +72,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`ESA app server running at http://localhost:${PORT}`);
+  buildRedvelvetAreaHashMap().catch(err => console.error('Area hashmap warmup failed:', err));
+  buildRedvelvetTagHashMap().catch(err => console.error('Tag hashmap warmup failed:', err));
 });

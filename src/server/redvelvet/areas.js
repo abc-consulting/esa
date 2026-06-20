@@ -146,7 +146,7 @@ function parseRedvelvetAreaProfiles(html) {
     const innerHtml = match[2] || '';
     const imgMatch = innerHtml.match(/<img\b[^>]*src="([^"]+)"/i);
     const thumbUrl = imgMatch
-      ? (imgMatch[1].startsWith('http') ? imgMatch[1] : `https://redvelvet.co.za${imgMatch[1]}`)
+      ? new URL(imgMatch[1], 'https://redvelvet.co.za/').href
       : '';
 
     profiles.push({
@@ -164,7 +164,7 @@ async function getRedvelvetAreaProfiles(areaName, preferredCityBucket = '2') {
   if (!normalizedArea) return { areaUrl: '', profiles: [] };
 
   const areaMap = await buildRedvelvetAreaHashMap();
-  const areaEntry = chooseAreaEntry(areaMap.get(normalizedArea), preferredCityBucket);
+  const areaEntry = findAreaEntryByName(areaMap, normalizedArea, preferredCityBucket);
   if (!areaEntry) return { areaUrl: '', profiles: [] };
 
   const html = await fetchText(areaEntry.url);

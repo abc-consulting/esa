@@ -8,7 +8,7 @@ function normalizeAreaName(value) {
     .toLowerCase();
 }
 
-function normalizeFetishName(value) {
+function normalizeTagName(value) {
   return String(value || '')
     .replace(/\s+/g, ' ')
     .trim()
@@ -19,4 +19,4 @@ function decodePlusSegment(value) {
   return decodeURIComponent(String(value || '')).replace(/\+/g, ' ').trim();
 }
 
-module.exports = { normalizeAreaName, normalizeFetishName, decodePlusSegment };
+module.exports = { normalizeAreaName, normalizeTagName, decodePlusSegment };

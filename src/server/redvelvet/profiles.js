@@ -3,7 +3,7 @@
 const { send } = require('../utils/http');
 const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html');
 const { parseRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket } = require('./areas');
-const { resolveRedvelvetFetishUrl } = require('./fetishes');
+const { resolveRedvelvetTagUrl } = require('./tags');
 const { URL } = require('url');
 
 async function fetchRedvelvetProfilesWithPostback(startUrl) {
@@ -91,7 +91,7 @@ async function handleRedvelvetTagProfiles(req, res, serverBase) {
   }
 
   try {
-    const resolvedTagUrl = await resolveRedvelvetFetishUrl(tag, tagUrl);
+    const resolvedTagUrl = await resolveRedvelvetTagUrl(tag, tagUrl);
     if (!resolvedTagUrl) {
       send(res, 200, JSON.stringify({
         tag,

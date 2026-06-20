@@ -31,7 +31,7 @@ const ALLOWED_IMAGE_HOSTS = new Set([
 ]);
 
 const REDVELVET_AREAS_URL = 'https://redvelvet.co.za/escorts/escorts_in_area';
-const REDVELVET_FETISHES_URL = 'https://redvelvet.co.za/escorts/fetish_escorts';
+const REDVELVET_TAGS_URL = 'https://redvelvet.co.za/escorts/fetish_escorts';
 const AREA_MAP_CACHE_TTL_MS = 60 * 60 * 1000;
 
 module.exports = {
@@ -42,6 +42,6 @@ module.exports = {
   MIME_TYPES,
   ALLOWED_IMAGE_HOSTS,
   REDVELVET_AREAS_URL,
-  REDVELVET_FETISHES_URL,
+  REDVELVET_TAGS_URL,
   AREA_MAP_CACHE_TTL_MS,
 };

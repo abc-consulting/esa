@@ -459,6 +459,12 @@ export async function fetchRedvelvetImagesFromProfile(uidOrId, deps) {
     .map(src => (src.startsWith('http') ? src : `${REDVELVET_BASE_URL}${src}`));
 
   const directImages = Array.from(new Set(images));
+  const age  = doc.querySelector('#ctl00_ContentPlaceHolder1_lbl_age')?.textContent.trim() ?? '';
+  const bust = doc.querySelector('#ctl00_ContentPlaceHolder1_lbl_bust')?.textContent.trim() ?? '';
+  const tags = Array.from(doc.querySelectorAll('.category-tags-container .category-tag strong'))
+    .map(el => el.textContent.trim())
+    .filter(Boolean);
+
   const profile = {
     provider: 'redvelvet',
     uid: pathId,
@@ -468,7 +474,9 @@ export async function fetchRedvelvetImagesFromProfile(uidOrId, deps) {
     thumbUrl: directImages[0] || '',
     profileUrl: url,
     phone,
-    age: '',
+    age,
+    bust,
+    tags,
   };
 
   return { profile, directImages };

@@ -34,12 +34,21 @@ import {
 
 const {
   searchBtn,
+  filterBar,
   filterInput,
+  filterChips,
   siteSelect,
   status,
+  contentLayout,
   profilesContainer,
   imagesContainer,
   profileDetailsContainer,
+  areaDropdownWrap,
+  areaDropdownBtn,
+  areaDropdownPanel,
+  tagDropdownWrap,
+  tagDropdownBtn,
+  tagDropdownPanel,
 } = dom;
 
 // ─── STATE ────────────────────────────────────────────────────────────────
@@ -51,6 +60,12 @@ let subIdPicCounts    = new Map();
 let failedImagesBySubId = new Map();
 let activeProvider    = 'esa';
 let filterKeyword     = '';
+let activeTags         = new Set();
+let tagProfileSets     = new Map();
+let tagProfileObjects  = new Map();
+let activeAreas        = new Set();
+let areaProfileSets    = new Map();
+let areaProfileObjects = new Map();
 
 // ─── STATUS ───────────────────────────────────────────────────────────────
 
@@ -108,12 +123,26 @@ function clearProfilesContainer() {
 function clearProfiles() {
   clearProfilesContainer();
   profileLinks = [];
+  filterKeyword = '';
+  activeTags.clear();
+  tagProfileSets.clear();
+  tagProfileObjects.clear();
+  activeAreas.clear();
+  areaProfileSets.clear();
+  areaProfileObjects.clear();
+  if (filterInput) filterInput.value = '';
+  if (filterChips) filterChips.innerHTML = '';
+  if (filterBar) filterBar.style.display = 'none';
 }
 
 function clearImages() {
   imagesContainer.innerHTML = '';
   failedImagesBySubId = new Map();
   renderFailedImagesPanel();
+}
+
+function exitProfileView() {
+  contentLayout?.classList.remove('has-profile');
 }
 
 function clearProfileDetails() {
@@ -218,6 +247,7 @@ async function doSearch() {
     return;
   }
 
+  exitProfileView();
   clearProfiles();
   clearImages();
   clearProfileDetails();
@@ -252,6 +282,7 @@ async function doSearch() {
 async function doAreaSearch() {
   const area = document.getElementById('areaInput').value.trim();
   if (!area) return;
+  exitProfileView();
   persistLastSearch('area', area);
   fetchProfilesByArea(area);
 }
@@ -307,6 +338,159 @@ async function fetchRedvelvetProfilesByArea(area) {
   renderProfileCards();
 }
 
+function syncTagCheckboxes() {
+  if (!tagDropdownPanel) return;
+  tagDropdownPanel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = activeTags.has(cb.value);
+  });
+}
+
+function syncAreaCheckboxes() {
+  if (!areaDropdownPanel) return;
+  areaDropdownPanel.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = activeAreas.has(cb.value);
+  });
+}
+
+function makeChip(label, onRemove) {
+  const chip = document.createElement('span');
+  chip.className = 'filter-chip';
+  chip.textContent = label;
+  const x = document.createElement('button');
+  x.className = 'filter-chip-remove';
+  x.textContent = '×';
+  x.addEventListener('click', onRemove);
+  chip.appendChild(x);
+  return chip;
+}
+
+function updateFilterChips() {
+  if (!filterChips) return;
+  filterChips.innerHTML = '';
+  activeTags.forEach(tag => filterChips.appendChild(makeChip(tag, () => toggleRedvelvetTag(tag))));
+  activeAreas.forEach(area => filterChips.appendChild(makeChip(area, () => toggleRedvelvetArea(area))));
+  const hasChips = activeTags.size > 0 || activeAreas.size > 0;
+  if (filterBar) filterBar.style.display = hasChips ? 'flex' : 'none';
+  syncTagCheckboxes();
+  syncAreaCheckboxes();
+}
+
+function applyFilters() {
+  exitProfileView();
+  clearImages();
+  clearProfileDetails();
+  clearProfilesContainer();
+
+  const hasTags  = activeTags.size > 0;
+  const hasAreas = activeAreas.size > 0;
+
+  if (!hasTags && !hasAreas) {
+    profileLinks = [];
+    renderProfileCards();
+    setStatus('');
+    return;
+  }
+
+  let tagUids = null;
+  if (hasTags) {
+    const tagSetsArray = [...tagProfileSets.values()];
+    tagUids = tagSetsArray.reduce((acc, set) => new Set([...acc].filter(uid => set.has(uid))), tagSetsArray[0]);
+  }
+
+  let areaUids = null;
+  if (hasAreas) {
+    areaUids = new Set();
+    for (const set of areaProfileSets.values()) for (const uid of set) areaUids.add(uid);
+  }
+
+  let finalUids;
+  if (tagUids && areaUids) {
+    finalUids = new Set([...tagUids].filter(uid => areaUids.has(uid)));
+  } else {
+    finalUids = tagUids || areaUids;
+  }
+
+  const allProfileObjects = new Map();
+  for (const m of areaProfileObjects.values()) for (const [uid, p] of m) allProfileObjects.set(uid, p);
+  for (const m of tagProfileObjects.values()) for (const [uid, p] of m) allProfileObjects.set(uid, p);
+
+  profileLinks = [...finalUids].map(uid => allProfileObjects.get(uid)).filter(Boolean);
+
+  const parts = [];
+  if (hasTags)  parts.push([...activeTags].join(' + '));
+  if (hasAreas) parts.push('areas: ' + [...activeAreas].join(', '));
+  setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'} matching: ${parts.join(' | ')}`);
+  renderProfileCards();
+}
+
+async function toggleRedvelvetTag(tag) {
+  if (activeTags.has(tag)) {
+    activeTags.delete(tag);
+    tagProfileSets.delete(tag);
+    tagProfileObjects.delete(tag);
+    updateFilterChips();
+    applyFilters();
+    return;
+  }
+
+  activeTags.add(tag);
+  setStatus('<span class="spinner"></span>Fetching profiles…');
+  searchBtn.disabled = true;
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  try {
+    const res = await fetch(`${relayBase}/redvelvet-tag-profiles?tag=${encodeURIComponent(tag)}&cityBucket=2`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const profiles = data.profiles || [];
+    tagProfileSets.set(tag, new Set(profiles.map(p => p.uid)));
+    const byUid = new Map();
+    profiles.forEach(p => byUid.set(p.uid, p));
+    tagProfileObjects.set(tag, byUid);
+  } catch (err) {
+    activeTags.delete(tag);
+    setStatus(`Error: ${err.message}`, true);
+    searchBtn.disabled = false;
+    return;
+  }
+  searchBtn.disabled = false;
+  updateFilterChips();
+  applyFilters();
+}
+
+async function toggleRedvelvetArea(area) {
+  if (activeAreas.has(area)) {
+    activeAreas.delete(area);
+    areaProfileSets.delete(area);
+    areaProfileObjects.delete(area);
+    updateFilterChips();
+    applyFilters();
+    return;
+  }
+
+  activeAreas.add(area);
+  setStatus('<span class="spinner"></span>Fetching profiles…');
+  searchBtn.disabled = true;
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  try {
+    const res = await fetch(`${relayBase}/redvelvet-area-profiles?name=${encodeURIComponent(area)}&cityBucket=2`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const profiles = data.profiles || [];
+    areaProfileSets.set(area, new Set(profiles.map(p => p.uid)));
+    const byUid = new Map();
+    profiles.forEach(p => byUid.set(p.uid, p));
+    areaProfileObjects.set(area, byUid);
+  } catch (err) {
+    activeAreas.delete(area);
+    setStatus(`Error: ${err.message}`, true);
+    searchBtn.disabled = false;
+    return;
+  }
+  searchBtn.disabled = false;
+  updateFilterChips();
+  applyFilters();
+}
+
 async function fetchRedvelvetImagesFromProfile(uidOrId) {
   const redvelvetResult = await fetchRedvelvetImagesFromProfileService(uidOrId, { setStatus, searchBtn });
   if (!redvelvetResult) return;
@@ -346,6 +530,8 @@ function renderProfileCards() {
     return 'https://redvelvet.co.za/Assets/images/noimage.png';
   };
 
+  if (filteredProfiles.length > 0 && filterBar) filterBar.style.display = 'flex';
+
   filteredProfiles.forEach((item, index) => {
     const uid = item.uid;
     if (!uid) return;
@@ -358,18 +544,17 @@ function renderProfileCards() {
     const wrapper = document.createElement('div');
     wrapper.className = 'profile-card';
     wrapper.style.animationDelay = `${index * 50}ms`;
+    wrapper.title = `Click to load images for uid ${uid}`;
+    if (provider === 'redvelvet') {
+      wrapper.addEventListener('click', () => fetchRedvelvetImagesFromProfile(item.profileUrl));
+    } else {
+      wrapper.addEventListener('click', () => fetchImagesFromProfile(uid));
+    }
 
     const img = document.createElement('img');
     img.src       = imgSrc;
     img.alt       = `${namePart} ${numberPart}`.trim();
-    img.title     = `Click to load images for uid ${uid}`;
     img.className = 'profile-thumb';
-    img.style.cursor = 'pointer';
-    if (provider === 'redvelvet') {
-      img.addEventListener('click', () => fetchRedvelvetImagesFromProfile(item.profileUrl));
-    } else {
-      img.addEventListener('click', () => fetchImagesFromProfile(uid));
-    }
 
     const name = document.createElement('div');
     name.className   = 'profile-name';
@@ -386,6 +571,7 @@ function renderProfileCards() {
 
 function renderProfileDetails(profile) {
   clearProfileDetails();
+  contentLayout?.classList.add('has-profile');
 
   const card = document.createElement('div');
   card.className = 'profile-details-card';
@@ -422,12 +608,33 @@ function renderProfileDetails(profile) {
     card.appendChild(age);
   }
 
+  if (profile.bust) {
+    const bust = document.createElement('span');
+    bust.className   = 'profile-details-meta';
+    bust.textContent = `Bust: ${profile.bust}`;
+    card.appendChild(bust);
+  }
+
   if (profile.phone) {
     const phone = document.createElement('a');
     phone.className   = 'profile-details-meta profile-details-phone';
     phone.href        = `tel:${profile.phone}`;
     phone.textContent = profile.phone;
     card.appendChild(phone);
+  }
+
+  if (profile.tags?.length) {
+    const tagsWrap = document.createElement('div');
+    tagsWrap.className = 'profile-tags';
+    profile.tags.forEach(tag => {
+      const chip = document.createElement('span');
+      chip.className   = 'profile-tag';
+      chip.textContent = tag;
+      chip.style.cursor = 'pointer';
+      chip.addEventListener('click', () => toggleRedvelvetTag(tag));
+      tagsWrap.appendChild(chip);
+    });
+    card.appendChild(tagsWrap);
   }
 
   profileDetailsContainer.appendChild(card);
@@ -552,10 +759,113 @@ function processImages(imgs, extraCandidates = [], extraSubIds = []) {
   setTimeout(renderImages, 500);
 }
 
+// ─── REDVELVET DROPDOWNS ──────────────────────────────────────────────────
+
+let redvelvetDropdownsReady = false;
+
+async function initRedvelvetDropdowns() {
+  if (redvelvetDropdownsReady) return;
+  redvelvetDropdownsReady = true;
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+
+  // Areas multi-select
+  try {
+    const res = await fetch(`${relayBase}/redvelvet-areas?cityBucket=2`);
+    if (res.ok) {
+      const data = await res.json();
+      areaDropdownPanel.innerHTML = '';
+      (data.areas || []).forEach(area => {
+        const row = document.createElement('label');
+        row.className = 'tag-option';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = area;
+        cb.addEventListener('change', () => toggleRedvelvetArea(area));
+        row.append(cb, document.createTextNode(` ${area}`));
+        areaDropdownPanel.appendChild(row);
+      });
+    }
+  } catch { /* silent */ }
+
+  areaDropdownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = areaDropdownPanel.style.display === 'block';
+    areaDropdownPanel.style.display = open ? 'none' : 'block';
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!areaDropdownWrap.contains(e.target)) {
+      areaDropdownPanel.style.display = 'none';
+    }
+  });
+
+  // Tags multi-select
+  try {
+    const res = await fetch(`${relayBase}/redvelvet-tags?`);
+    if (res.ok) {
+      const data = await res.json();
+      tagDropdownPanel.innerHTML = '';
+      (data.tags || []).forEach(({ label }) => {
+        const row = document.createElement('label');
+        row.className = 'tag-option';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = label;
+        cb.addEventListener('change', () => toggleRedvelvetTag(label));
+        row.append(cb, document.createTextNode(` ${label}`));
+        tagDropdownPanel.appendChild(row);
+      });
+    }
+  } catch { /* silent */ }
+
+  tagDropdownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = tagDropdownPanel.style.display === 'block';
+    tagDropdownPanel.style.display = open ? 'none' : 'block';
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!tagDropdownWrap.contains(e.target)) {
+      tagDropdownPanel.style.display = 'none';
+    }
+  });
+}
+
+function showRedvelvetDropdowns() {
+  if (areaDropdownWrap) areaDropdownWrap.style.display = '';
+  if (tagDropdownWrap) tagDropdownWrap.style.display = '';
+}
+
+function hideRedvelvetDropdowns() {
+  if (areaDropdownWrap) areaDropdownWrap.style.display = 'none';
+  if (tagDropdownWrap) tagDropdownWrap.style.display = 'none';
+}
+
 // ─── EVENT WIRING ─────────────────────────────────────────────────────────
+
+function renderFilterChip() {
+  if (!filterChips) return;
+  filterChips.innerHTML = '';
+  if (!filterKeyword) return;
+  const chip = document.createElement('span');
+  chip.className = 'filter-chip';
+  chip.textContent = filterKeyword;
+  const x = document.createElement('button');
+  x.className = 'filter-chip-remove';
+  x.textContent = '×';
+  x.addEventListener('click', () => {
+    filterKeyword = '';
+    filterInput.value = '';
+    renderFilterChip();
+    renderProfileCards();
+  });
+  chip.appendChild(x);
+  filterChips.appendChild(chip);
+}
 
 const handleFilterInput = debounce((ev) => {
   filterKeyword = ev.target.value;
+  renderFilterChip();
   renderProfileCards();
 }, 300);
 
@@ -574,13 +884,24 @@ dom.filterBtn.addEventListener('click', renderProfileCards);
 activeProvider = readSelectedProvider();
 if (siteSelect) {
   siteSelect.value = activeProvider;
+  if (activeProvider === 'redvelvet') {
+    showRedvelvetDropdowns();
+    initRedvelvetDropdowns();
+  }
   siteSelect.addEventListener('change', () => {
     saveSelectedProvider(getCurrentProvider());
+    exitProfileView();
     clearProfiles();
     clearImages();
     clearProfileDetails();
     loadFavorites();
     renderFavoritesPanel();
+    if (activeProvider === 'redvelvet') {
+      showRedvelvetDropdowns();
+      initRedvelvetDropdowns();
+    } else {
+      hideRedvelvetDropdowns();
+    }
     restoreLastSearch();
   });
 }
