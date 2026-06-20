@@ -1,0 +1,15 @@
+export const dom = {
+  searchBtn: document.getElementById('searchBtn'),
+  areaBtn: document.getElementById('areaBtn'),
+  siteSelect: document.getElementById('siteSelect'),
+  searchInput: document.getElementById('searchInput'),
+  areaInput: document.getElementById('areaInput'),
+  filterInput: document.getElementById('filterInput'),
+  filterBtn: document.getElementById('filterBtn'),
+  status: document.getElementById('status'),
+  selectedOutput: document.getElementById('selected-output'),
+  profilesContainer: document.getElementById('profiles-container'),
+  profileDetailsContainer: document.getElementById('profile-details-container'),
+  imagesContainer: document.getElementById('images-container'),
+  favoritesContainer: document.getElementById('favorites-container'),
+};

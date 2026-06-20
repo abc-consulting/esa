@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="esa-image-relay-base-url" content="http://localhost:5510" />
   <title>ESA Search</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -11,13 +12,20 @@
   <h1>🔍 ESA Search</h1>
 
   <div class="search-bar">
+    <select id="siteSelect">
+      <option value="esa">ESA</option>
+      <option value="redvelvet">RedVelvet</option>
+    </select>
+  </div>
+
+  <div class="search-bar">
     <input
       type="text"
       id="searchInput"
       placeholder="Enter nickname or UID (e.g. 168951)…"
       autocomplete="off"
     />
-    <button id="searchBtn" onclick="doSearch()">Search</button>
+    <button id="searchBtn">Search</button>
   </div>
 
   <div class="search-bar">
@@ -27,7 +35,17 @@
       placeholder="Search by area (e.g. Sea Point)…"
       autocomplete="off"
     />
-    <button id="areaBtn" onclick="doAreaSearch()">Search Area</button>
+    <button id="areaBtn">Search Area</button>
+  </div>
+
+    <div class="filter">
+    <input
+      type="text"
+      id="filterInput"
+      placeholder="Filter"
+      autocomplete="off"
+    />
+    <button id="filterBtn">Filter</button>
   </div>
 
   <div id="status"></div>
@@ -40,6 +58,6 @@
   <div id="images-container"></div>
   <div id="selected-output"></div>
 
-  <script src="app.js"></script>
+  <script type="module" src="src/client/app.js"></script>
 </body>
 </html>

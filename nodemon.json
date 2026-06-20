@@ -1,0 +1,4 @@
+{
+  "watch": ["src/server", "src/client", "index.html", "style.css"],
+  "ext": "js,json,html,css"
+}

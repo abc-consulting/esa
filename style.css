@@ -35,6 +35,21 @@ h1 {
   transition: border-color 0.2s;
 }
 
+.search-bar select {
+  width: 220px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 2px solid #4a4a6a;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 1rem;
+  outline: none;
+}
+
+.search-bar select:focus {
+  border-color: #c084fc;
+}
+
 .search-bar input:focus {
   border-color: #c084fc;
 }
@@ -123,6 +138,14 @@ h1 {
   border-radius: 50%;
   border: 1px solid #4a4a6a;
   background: #16213e;
+}
+
+.favorite-item--esa .favorite-avatar {
+  border: 2px solid #a855f7;
+}
+
+.favorite-item--redvelvet .favorite-avatar {
+  border: 2px solid #ef4444;
 }
 
 .favorite-label {
