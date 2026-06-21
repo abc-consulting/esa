@@ -418,6 +418,28 @@ export async function fetchRedvelvetProfilesByArea(area, deps) {
   return fetchRedvelvetProfilesPage(`${REDVELVET_BASE_URL}/escorts`, rawArea, deps, { filterBy: 'area' });
 }
 
+export async function fetchRedvelvetProfileDetails(uid, deps) {
+  const { setStatus, searchBtn } = deps;
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+
+  setStatus('<span class="spinner"></span>Fetching profile…');
+  if (searchBtn) searchBtn.disabled = true;
+
+  try {
+    const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(uid)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    setStatus('');
+    if (searchBtn) searchBtn.disabled = false;
+    return data;
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, true);
+    if (searchBtn) searchBtn.disabled = false;
+    return null;
+  }
+}
+
 export async function fetchRedvelvetImagesFromProfile(uidOrId, deps) {
   const { setStatus, searchBtn } = deps;
 

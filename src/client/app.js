@@ -139,6 +139,7 @@ function clearImages() {
   imagesContainer.innerHTML = '';
   failedImagesBySubId = new Map();
   renderFailedImagesPanel();
+  document.getElementById('download-all-btn')?.remove();
 }
 
 function exitProfileView() {
@@ -640,6 +641,84 @@ function renderProfileDetails(profile) {
   profileDetailsContainer.appendChild(card);
 }
 
+function makeDownloadBtn(relayUrl, filename) {
+  const btn = document.createElement('a');
+  btn.className = 'img-download-btn';
+  btn.title = 'Download';
+  btn.innerHTML = '&#8595;';
+  btn.href = relayUrl;
+  btn.download = filename;
+  btn.addEventListener('click', e => e.stopPropagation());
+  return btn;
+}
+
+function wrapImageInItem(img, relayUrl, filename) {
+  const wrap = document.createElement('div');
+  wrap.className = 'masonry-item';
+  wrap.appendChild(img);
+  wrap.appendChild(makeDownloadBtn(relayUrl, filename));
+  return wrap;
+}
+
+function inferImageExt(url) {
+  const path = url.split('?')[0];
+  const match = path.match(/\.(\w{2,5})$/);
+  const ext = match ? match[1].toLowerCase() : '';
+  return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif'].includes(ext) ? `.${ext}` : '.jpg';
+}
+
+function getProfileName() {
+  const nameEl = profileDetailsContainer.querySelector('.profile-details-name');
+  return nameEl ? nameEl.textContent.trim().replace(/[\\/:*?"<>|]/g, '_') : 'profile';
+}
+
+function renderDownloadAllBtn(relayBase, toRelayImageUrl) {
+  const existing = document.getElementById('download-all-btn');
+  if (existing) existing.remove();
+
+  const btn = document.createElement('button');
+  btn.id = 'download-all-btn';
+  btn.textContent = 'Download All Images';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    const items = [...imagesContainer.querySelectorAll('.masonry-item')];
+    const profileName = getProfileName();
+    const zip = new window.JSZip();
+    const folder = zip.folder(profileName);
+    let done = 0;
+
+    const updateLabel = () => { btn.textContent = `Zipping… ${done}/${items.length}`; };
+    updateLabel();
+
+    await Promise.all(items.map(async (item, idx) => {
+      const img = item.querySelector('img');
+      if (!img) return;
+      const sourceUrl = img.dataset.sourceUrl || img.src;
+      const filename = `${String(idx + 1).padStart(3, '0')}${inferImageExt(sourceUrl)}`;
+      try {
+        const res = await fetch(toRelayImageUrl(sourceUrl));
+        if (!res.ok) throw new Error();
+        folder.file(filename, await res.blob());
+      } catch { /* skip failed */ }
+      done++;
+      updateLabel();
+    }));
+
+    btn.textContent = 'Building zip…';
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${profileName}.zip`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+
+    btn.disabled = false;
+    btn.textContent = 'Download All Images';
+  });
+
+  imagesContainer.before(btn);
+}
+
 function renderImages() {
   clearImages();
 
@@ -650,23 +729,26 @@ function renderImages() {
     return toRelayImageUrl(url);
   };
 
+  const profileName = getProfileName();
   let slot = 0;
 
-  galleryImageUrls.forEach(url => {
+  galleryImageUrls.forEach((url, idx) => {
     const img = document.createElement('img');
     img.alt       = 'gallery image';
     img.src       = toDisplayImageUrl(url);
     img.className = 'masonry-img';
     img.style.animationDelay = `${slot * 60}ms`;
     img.dataset.sourceUrl = url;
+    const filename = `${profileName}_${String(idx + 1).padStart(3, '0')}${inferImageExt(url)}`;
     img.onerror = function () {
       recordFailedImage(this.dataset.sourceUrl || this.currentSrc || '');
-      this.remove();
+      this.closest('.masonry-item')?.remove() ?? this.remove();
     };
-    imagesContainer.appendChild(img);
+    imagesContainer.appendChild(wrapImageInItem(img, toRelayImageUrl(url), filename));
     slot++;
   });
 
+  let subSlot = galleryImageUrls.length;
   subIdArray.forEach(id => {
     const maxPics = Math.max(1, Math.min(subIdPicCounts.get(id) || 6, 30));
     for (let i = 1; i <= maxPics; i++) {
@@ -677,6 +759,7 @@ function renderImages() {
       img.className = 'masonry-img';
       img.style.animationDelay = `${slot * 60}ms`;
       img.dataset.sourceUrl = mediumSrc;
+      const filename = `${profileName}_${String(subSlot + 1).padStart(3, '0')}.jpg`;
       img.onerror = function () {
         const sourceUrl = this.dataset.sourceUrl || '';
         const smallSource = sourceUrl.replace('size=medium', 'size=small');
@@ -685,13 +768,16 @@ function renderImages() {
           this.src = toDisplayImageUrl(smallSource);
         } else {
           recordFailedImage(sourceUrl || this.currentSrc || '');
-          this.remove();
+          this.closest('.masonry-item')?.remove() ?? this.remove();
         }
       };
-      imagesContainer.appendChild(img);
+      imagesContainer.appendChild(wrapImageInItem(img, toRelayImageUrl(mediumSrc), filename));
       slot++;
+      subSlot++;
     }
   });
+
+  if (slot > 0) renderDownloadAllBtn(relayBase, toRelayImageUrl);
 }
 
 // ─── IMAGE PROCESSING ─────────────────────────────────────────────────────

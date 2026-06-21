@@ -13,6 +13,7 @@ const {
 } = require('./redvelvet/areas');
 const { handleRedvelvetTags, buildRedvelvetTagHashMap } = require('./redvelvet/tags');
 const { handleRedvelvetProfileLookup, handleRedvelvetTagProfiles } = require('./redvelvet/profiles');
+const { handleRedvelvetProfileDetails } = require('./redvelvet/profile-details');
 
 const server = http.createServer(async (req, res) => {
   const serverBase = `http://${req.headers.host || `localhost:${PORT}`}`;
@@ -39,6 +40,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url && req.url.startsWith('/redvelvet-profile?')) {
     await handleRedvelvetProfileLookup(req, res, serverBase);
+    return;
+  }
+
+  if (req.url && req.url.startsWith('/redvelvet-profile-details?')) {
+    await handleRedvelvetProfileDetails(req, res, serverBase);
     return;
   }
 
