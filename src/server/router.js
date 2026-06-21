@@ -80,4 +80,7 @@ server.listen(PORT, () => {
   console.log(`ESA app server running at http://localhost:${PORT}`);
   buildRedvelvetAreaHashMap().catch(err => console.error('Area hashmap warmup failed:', err));
   buildRedvelvetTagHashMap().catch(err => console.error('Tag hashmap warmup failed:', err));
+  if (!process.env.RV_EMAIL || !process.env.RV_PASSWORD) {
+    console.warn('[RV Auth] RV_EMAIL / RV_PASSWORD not set — fetching without login');
+  }
 });

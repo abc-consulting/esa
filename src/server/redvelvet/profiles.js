@@ -1,10 +1,40 @@
 'use strict';
 
-const { send } = require('../utils/http');
+const fs = require('fs');
+const path = require('path');
+const { send, fetchText } = require('../utils/http');
 const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html');
-const { parseRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket } = require('./areas');
+const { parseRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap } = require('./areas');
 const { resolveRedvelvetTagUrl } = require('./tags');
 const { URL } = require('url');
+
+const TAG_OVERRIDES_PATH = path.join(__dirname, '../../../tag-overrides.json');
+const REDVELVET_BASE = 'https://redvelvet.co.za';
+
+function loadTagOverrides() {
+  try {
+    return JSON.parse(fs.readFileSync(TAG_OVERRIDES_PATH, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+async function fetchProfileStub(uid) {
+  const url = `${REDVELVET_BASE}/escorts/escorts_details.aspx?userid=${uid}`;
+  try {
+    const html = await fetchText(url);
+    const slugMatch = html.match(/escorts_details\/([^/]+)\/([^/]+)\/(\d+)/i);
+    if (slugMatch) {
+      const name = decodeURIComponent(slugMatch[1]).replace(/\+/g, ' ').trim();
+      const area = decodeURIComponent(slugMatch[2]).replace(/\+/g, ' ').trim();
+      const resolvedUid = slugMatch[3];
+      const imgMatch = html.match(/src="([^"]*\/uploadimages\/[^"]+)"/i);
+      const thumbUrl = imgMatch ? (imgMatch[1].startsWith('http') ? imgMatch[1] : `${REDVELVET_BASE}${imgMatch[1]}`) : '';
+      return { provider: 'redvelvet', uid: resolvedUid, name, area, profileUrl: `${REDVELVET_BASE}/escorts/escorts_details/${slugMatch[1]}/${slugMatch[2]}/${resolvedUid}`, thumbUrl };
+    }
+  } catch { /* non-fatal */ }
+  return null;
+}
 
 async function fetchRedvelvetProfilesWithPostback(startUrl) {
   const byUid = new Map();
@@ -19,31 +49,30 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
     });
   };
 
-  const enqueueTargets = (html) => {
-    extractDataPagerTargets(html).forEach((target) => {
-      if (seenTargets.has(target)) return;
-      seenTargets.add(target);
-      queue.push({ target, html });
-    });
-  };
-
   const firstHtml = await fetch(startUrl, {
     headers: { 'User-Agent': 'Mozilla/5.0' },
   }).then((r) => r.text());
   pushProfilesFromHtml(firstHtml);
-  enqueueTargets(firstHtml);
 
-  const MAX_POSTBACK_PAGES = 25;
+  // Walk pages by always clicking the › (next) button.
+  // The › button target is consistently DataPager*$ctl02$ctl00 across all pages.
+  // Using › guarantees sequential page advancement with the freshest __VIEWSTATE.
+  const NEXT_BUTTON_SUFFIX = /DataPager\d*\$ctl02\$ctl00$/i;
+  const MAX_POSTBACK_PAGES = 50;
+  let currentHtml = firstHtml;
   let traversed = 0;
 
-  while (queue.length > 0 && traversed < MAX_POSTBACK_PAGES) {
-    const next = queue.shift();
-    if (!next?.target || !next?.html) continue;
-
+  while (traversed < MAX_POSTBACK_PAGES) {
+    const allTargets = extractDataPagerTargets(currentHtml);
+    const target = allTargets.find(t => NEXT_BUTTON_SUFFIX.test(t));
+    // No › button means we're on the last page
+    if (!target) break;
+    seenTargets.add(target);
     traversed += 1;
-    const fields = extractHiddenFields(next.html);
+
+    const fields = extractHiddenFields(currentHtml);
     const body = new URLSearchParams(fields);
-    body.set('__EVENTTARGET', next.target);
+    body.set('__EVENTTARGET', target);
     body.set('__EVENTARGUMENT', '');
 
     let response;
@@ -57,15 +86,15 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
         body: body.toString(),
       });
     } catch {
-      continue;
+      break;
     }
 
-    if (!response.ok) continue;
+    if (!response.ok) break;
     const html = await response.text();
-    if (!html) continue;
+    if (!html) break;
 
     pushProfilesFromHtml(html);
-    enqueueTargets(html);
+    currentHtml = html; // next iteration posts from this page's __VIEWSTATE
   }
 
   return Array.from(byUid.values());
@@ -108,8 +137,21 @@ async function handleRedvelvetTagProfiles(req, res, serverBase) {
     }
 
     const profiles = await fetchRedvelvetProfilesWithPostback(resolvedTagUrl);
-    const areaSet = await getAreaSetForCityBucket(cityBucket);
-    const filteredProfiles = filterProfilesByCityBucket(profiles, areaSet);
+    const [areaSet, areaMap] = await Promise.all([
+      getAreaSetForCityBucket(cityBucket),
+      buildRedvelvetAreaHashMap(),
+    ]);
+    const filteredProfiles = filterProfilesByCityBucket(profiles, areaSet, areaMap);
+
+    // Merge any local overrides for this tag
+    const overrides = loadTagOverrides();
+    const overrideUids = (overrides[tag] || []).map(String);
+    const existingUids = new Set(filteredProfiles.map(p => String(p.uid)));
+    const missingUids = overrideUids.filter(uid => !existingUids.has(uid));
+    if (missingUids.length > 0) {
+      const stubs = await Promise.all(missingUids.map(fetchProfileStub));
+      stubs.filter(Boolean).forEach(p => filteredProfiles.push(p));
+    }
 
     send(res, 200, JSON.stringify({
       tag,

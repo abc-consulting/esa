@@ -21,4 +21,8 @@ export const dom = {
   tagDropdownWrap: document.getElementById('tag-dropdown-wrap'),
   tagDropdownBtn: document.getElementById('tagDropdownBtn'),
   tagDropdownPanel: document.getElementById('tagDropdownPanel'),
+  redvelvetDetailFilters: document.getElementById('redvelvet-detail-filters'),
+  ageMinInput: document.getElementById('ageMinInput'),
+  ageMaxInput: document.getElementById('ageMaxInput'),
+  bustInput: document.getElementById('bustInput'),
 };

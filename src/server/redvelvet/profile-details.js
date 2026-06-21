@@ -1,8 +1,10 @@
 'use strict';
 
-const { fetchText, send } = require('../utils/http');
+const { send } = require('../utils/http');
 const { decodeHtmlEntities, stripTags } = require('../utils/html');
 const { findAreaEntryByName, buildRedvelvetAreaHashMap } = require('./areas');
+const { getSessionCookie, clearSessionCookie } = require('./auth');
+const { REQUEST_TIMEOUT_MS } = require('../constants');
 const { URL } = require('url');
 
 const REDVELVET_BASE = 'https://redvelvet.co.za';
@@ -59,18 +61,59 @@ function parseProfileDetails(html, profileUrl) {
   // Images from /uploadimages/
   const imgPattern = /<img\b[^>]*src="([^"]*\/uploadimages\/[^"]+)"/gi;
   const images = [];
-  const seenImgs = new Set();
+  const seenMedia = new Set();
   let im;
   while ((im = imgPattern.exec(html)) !== null) {
     const abs = toAbsolute(decodeHtmlEntities(im[1]));
-    if (abs && !seenImgs.has(abs)) { seenImgs.add(abs); images.push(abs); }
+    if (abs && !seenMedia.has(abs)) { seenMedia.add(abs); images.push(abs); }
   }
 
-  return { pathId, name, area, age, bust, phone, tags, images };
+  // Videos from <video> or <source> tags (available to logged-in members)
+  const videos = [];
+  const videoPattern = /<(?:video|source)\b[^>]*src="([^"]*\/uploadimages\/[^"]+\.(?:mp4|webm|ogg|mov))[^"]*"/gi;
+  let vm;
+  while ((vm = videoPattern.exec(html)) !== null) {
+    const abs = toAbsolute(decodeHtmlEntities(vm[1]));
+    if (abs && !seenMedia.has(abs)) { seenMedia.add(abs); videos.push(abs); }
+  }
+
+  return { pathId, name, area, age, bust, phone, tags, images, videos };
+}
+
+async function fetchAuthenticated(url) {
+  const cookie = await getSessionCookie();
+  const headers = { 'User-Agent': 'Mozilla/5.0', ...(cookie ? { Cookie: cookie } : {}) };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(url, { redirect: 'follow', signal: controller.signal, headers });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+
+  // If redirected to login page the session has expired — clear and retry once without auth
+  if (/members\/login/i.test(res.url) || /id="ctl00_ContentPlaceHolder1_btnLogin"/i.test(html)) {
+    clearSessionCookie();
+    const controller2 = new AbortController();
+    const timer2 = setTimeout(() => controller2.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      const res2 = await fetch(url, { redirect: 'follow', signal: controller2.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+      return res2.text();
+    } finally {
+      clearTimeout(timer2);
+    }
+  }
+
+  return html;
 }
 
 async function fetchRedvelvetProfileDetails(profileUrl) {
-  const html = await fetchText(profileUrl);
+  const html = await fetchAuthenticated(profileUrl);
   const parsed = parseProfileDetails(html, profileUrl);
 
   // Resolve area URL server-side
@@ -97,7 +140,7 @@ async function fetchRedvelvetProfileDetails(profileUrl) {
     tags: parsed.tags,
   };
 
-  return { profile, directImages: parsed.images };
+  return { profile, directImages: parsed.images, videos: parsed.videos };
 }
 
 async function handleRedvelvetProfileDetails(req, res, serverBase) {

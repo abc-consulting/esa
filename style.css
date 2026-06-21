@@ -185,6 +185,27 @@ body {
 
 .filter button:hover { background: #1a4a80; border-color: #c084fc; }
 
+#redvelvet-detail-filters {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#redvelvet-detail-filters input {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #4a4a6a;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  outline: none;
+  width: 80px;
+}
+
+#redvelvet-detail-filters input[id="bustInput"] { width: 110px; }
+
+#redvelvet-detail-filters input:focus { border-color: #c084fc; }
+
 #filter-chips {
   display: flex;
   align-items: center;

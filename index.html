@@ -49,7 +49,12 @@
       placeholder="Filter"
       autocomplete="off"
     />
-    <button id="filterBtn">Filter</button>
+    <div id="redvelvet-detail-filters" style="display:none">
+      <input type="number" id="ageMinInput" placeholder="Age min" min="18" max="99" />
+      <input type="number" id="ageMaxInput" placeholder="Age max" min="18" max="99" />
+      <input type="text" id="bustInput" placeholder="Bust (e.g. 34C)" autocomplete="off" />
+      <button id="filterBtn">Filter</button>
+    </div>
     <div id="filter-chips"></div>
   </div>
 

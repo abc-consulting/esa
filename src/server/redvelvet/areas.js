@@ -106,36 +106,74 @@ async function getAreaSetForCityBucket(cityBucket = '2') {
   return areaSet;
 }
 
-function filterProfilesByCityBucket(profiles, areaSet) {
+function filterProfilesByCityBucket(profiles, areaSet, areaMap = null) {
   if (!(areaSet instanceof Set) || areaSet.size === 0) return profiles;
-  return profiles.filter((profile) => areaSet.has(normalizeAreaName(profile?.area || '')));
+  return profiles.filter((profile) => {
+    const normalized = normalizeAreaName(profile?.area || '');
+    if (!normalized) return true; // no area info — include rather than drop
+    // Exact match in target bucket
+    if (areaSet.has(normalized)) return true;
+    // Partial match in target bucket
+    for (const known of areaSet) {
+      if (normalized.startsWith(known) || known.startsWith(normalized)) return true;
+    }
+    // If area map available, check if this area is known to belong to a different city bucket
+    // If it's known-elsewhere → exclude; if unknown → include (tag page is already city-scoped)
+    if (areaMap instanceof Map) {
+      for (const [key, entries] of areaMap.entries()) {
+        if (normalized === key || normalized.startsWith(key) || key.startsWith(normalized)) {
+          // Found in map — it's a known area belonging to a different bucket, exclude it
+          return false;
+        }
+      }
+    }
+    // Area not in hashmap at all — include (unknown suburb, assume correct city)
+    return true;
+  });
 }
 
 function decodePlusSegment(value) {
   return decodeURIComponent(String(value || '')).replace(/\+/g, ' ').trim();
 }
 
-function parseRedvelvetProfileFromHref(href) {
+function parseRedvelvetProfileFromHref(href, fallbackName = '') {
   const absolute = href.startsWith('http') ? href : `https://redvelvet.co.za${href}`;
-  const match = absolute.match(/\/escorts\/escorts_details\/([^/]+)\/([^/]+)\/(\d+)(?:\/|$)/i);
-  if (!match) return null;
-  return {
-    uid: match[3],
-    name: decodePlusSegment(match[1]),
-    area: decodePlusSegment(match[2]),
-    profileUrl: absolute,
-  };
+
+  // Slug-based URL: /escorts/escorts_details/Name/Area/UID
+  const slugMatch = absolute.match(/\/escorts\/escorts_details\/([^/]+)\/([^/]+)\/(\d+)(?:\/|$)/i);
+  if (slugMatch) {
+    return {
+      uid: slugMatch[3],
+      name: decodePlusSegment(slugMatch[1]),
+      area: decodePlusSegment(slugMatch[2]),
+      profileUrl: absolute,
+    };
+  }
+
+  // Query-string URL: escorts_details.aspx?userid=12345
+  const qsMatch = absolute.match(/escorts_details\.aspx\?.*userid=(\d+)/i);
+  if (qsMatch) {
+    return {
+      uid: qsMatch[1],
+      name: fallbackName || `Profile ${qsMatch[1]}`,
+      area: '',
+      profileUrl: absolute,
+    };
+  }
+
+  return null;
 }
 
 function parseRedvelvetAreaProfiles(html) {
   const profiles = [];
   const byUid = new Set();
-  const anchorPattern = /<a\b[^>]*href="([^"]*\/escorts\/escorts_details\/[^"#]+)"[^>]*>([\s\S]*?)<\/a>/gi;
+  const anchorPattern = /<a\b[^>]*href="([^"]*\/escorts\/escorts_details[^"#]+)"[^>]*>([\s\S]*?)<\/a>/gi;
   let match;
 
   while ((match = anchorPattern.exec(html)) !== null) {
     const href = match[1] || '';
-    const parsed = parseRedvelvetProfileFromHref(href);
+    const innerText = (match[2] || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    const parsed = parseRedvelvetProfileFromHref(href, innerText);
 
     if (!parsed) continue;
 

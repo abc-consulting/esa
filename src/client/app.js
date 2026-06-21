@@ -49,6 +49,10 @@ const {
   tagDropdownWrap,
   tagDropdownBtn,
   tagDropdownPanel,
+  redvelvetDetailFilters,
+  ageMinInput,
+  ageMaxInput,
+  bustInput,
 } = dom;
 
 // ─── STATE ────────────────────────────────────────────────────────────────
@@ -66,6 +70,29 @@ let tagProfileObjects  = new Map();
 let activeAreas        = new Set();
 let areaProfileSets    = new Map();
 let areaProfileObjects = new Map();
+let detailCache        = new Map();
+let ageMin = null, ageMax = null, bustFilter = '';
+
+// ─── DETAIL CACHE ─────────────────────────────────────────────────────────
+
+async function ensureDetailCache(profiles) {
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  const missing = profiles.filter(p => p.provider === 'redvelvet' && !detailCache.has(p.uid));
+  if (!missing.length) return;
+  let done = 0;
+  await Promise.all(missing.map(async p => {
+    try {
+      const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(p.uid)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.profile) detailCache.set(p.uid, data.profile);
+      }
+    } catch { /* skip */ }
+    done++;
+    setStatus(`Loading details… ${done}/${missing.length}`);
+  }));
+  setStatus('');
+}
 
 // ─── STATUS ───────────────────────────────────────────────────────────────
 
@@ -124,6 +151,10 @@ function clearProfiles() {
   clearProfilesContainer();
   profileLinks = [];
   filterKeyword = '';
+  ageMin = null; ageMax = null; bustFilter = '';
+  if (ageMinInput) ageMinInput.value = '';
+  if (ageMaxInput) ageMaxInput.value = '';
+  if (bustInput) bustInput.value = '';
   activeTags.clear();
   tagProfileSets.clear();
   tagProfileObjects.clear();
@@ -513,9 +544,18 @@ async function fetchRedvelvetImagesFromProfile(uidOrId) {
 function renderProfileCards() {
   clearProfilesContainer();
 
-  const filteredProfiles = profileLinks.filter(profile => {
-    return profile.name.includes(filterKeyword) || profile.area.includes(filterKeyword);
-  });
+  const filteredProfiles = profileLinks
+    .filter(profile => profile.name.includes(filterKeyword) || profile.area.includes(filterKeyword))
+    .filter(profile => {
+      if (profile.provider !== 'redvelvet') return true;
+      if (!ageMin && !ageMax && !bustFilter) return true;
+      const detail = detailCache.get(profile.uid);
+      if (!detail) return true;
+      if (ageMin && Number(detail.age) < ageMin) return false;
+      if (ageMax && Number(detail.age) > ageMax) return false;
+      if (bustFilter && !detail.bust?.toLowerCase().includes(bustFilter.toLowerCase())) return false;
+      return true;
+    });
 
   const CARD_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220"><rect width="100%" height="100%" fill="%23f3f3f3"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23777" font-size="16">No Image</text></svg>';
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
@@ -920,11 +960,13 @@ async function initRedvelvetDropdowns() {
 function showRedvelvetDropdowns() {
   if (areaDropdownWrap) areaDropdownWrap.style.display = '';
   if (tagDropdownWrap) tagDropdownWrap.style.display = '';
+  if (redvelvetDetailFilters) redvelvetDetailFilters.style.display = 'flex';
 }
 
 function hideRedvelvetDropdowns() {
   if (areaDropdownWrap) areaDropdownWrap.style.display = 'none';
   if (tagDropdownWrap) tagDropdownWrap.style.display = 'none';
+  if (redvelvetDetailFilters) redvelvetDetailFilters.style.display = 'none';
 }
 
 // ─── EVENT WIRING ─────────────────────────────────────────────────────────
@@ -957,6 +999,14 @@ const handleFilterInput = debounce((ev) => {
 
 filterInput.addEventListener('input', handleFilterInput);
 
+async function applyDetailFilters() {
+  ageMin = Number(ageMinInput.value) || null;
+  ageMax = Number(ageMaxInput.value) || null;
+  bustFilter = bustInput.value.trim();
+  if (ageMin || ageMax || bustFilter) await ensureDetailCache(profileLinks);
+  renderProfileCards();
+}
+
 document.getElementById('searchInput')
   .addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 
@@ -965,7 +1015,7 @@ document.getElementById('areaInput')
 
 dom.searchBtn.addEventListener('click', doSearch);
 dom.areaBtn.addEventListener('click', doAreaSearch);
-dom.filterBtn.addEventListener('click', renderProfileCards);
+dom.filterBtn.addEventListener('click', applyDetailFilters);
 
 activeProvider = readSelectedProvider();
 if (siteSelect) {
