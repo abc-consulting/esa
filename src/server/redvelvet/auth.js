@@ -3,7 +3,7 @@
 const { extractHiddenFields } = require('../utils/html');
 const { REQUEST_TIMEOUT_MS } = require('../constants');
 
-const LOGIN_URL = 'https://redvelvet.co.za/members/login';
+const LOGIN_URL = 'https://redvelvet.co.za/userlogin/login';
 
 let sessionCookie = null;
 let loginInProgress = null;
@@ -37,31 +37,35 @@ async function doLogin() {
 
   // Step 2: POST credentials
   const params = new URLSearchParams(fields);
-  params.set('ctl00$ContentPlaceHolder1$txtEmail',    email);
-  params.set('ctl00$ContentPlaceHolder1$txtPassword', password);
-  params.set('ctl00$ContentPlaceHolder1$btnLogin',    'Login');
+  params.set('ctl00$ContentPlaceHolder1$txtLoginEmail',    email);
+  params.set('ctl00$ContentPlaceHolder1$txtLoginPassword', password);
+  params.set('ctl00$ContentPlaceHolder1$Button1',          'Login to VIP Access');
 
   const postRes = await fetchWithTimeout(LOGIN_URL, {
     method: 'POST',
     headers: {
       'User-Agent': 'Mozilla/5.0',
       'Content-Type': 'application/x-www-form-urlencoded',
+      'Referer': LOGIN_URL,
       ...(getCookies ? { Cookie: parseCookieHeader(getCookies) } : {}),
     },
     body: params.toString(),
     redirect: 'manual',
   });
 
-  // A successful login results in a redirect; collect the session cookie
+  console.log(`[RV Auth] POST status: ${postRes.status}, location: ${postRes.headers.get('location') || '(none)'}`);
+
+  // A successful login results in a redirect; collect the session cookie from POST response
+  // (falls back to GET cookie if POST set no new cookie)
   const setCookie = postRes.headers.get('set-cookie') || '';
-  const cookie = parseCookieHeader(setCookie || getCookies);
+  const cookie = parseCookieHeader(setCookie) || parseCookieHeader(getCookies);
 
   if (!cookie) {
-    console.warn('[RV Auth] Login succeeded but no session cookie found');
+    console.warn('[RV Auth] Login did not yield a session cookie');
     return null;
   }
 
-  console.log('[RV Auth] Logged in successfully');
+  console.log('[RV Auth] Logged in successfully, cookie:', cookie.slice(0, 60));
   return cookie;
 }
 

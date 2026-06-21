@@ -9,11 +9,13 @@ const { URL } = require('url');
 
 const REDVELVET_BASE = 'https://redvelvet.co.za';
 
-function toAbsolute(src) {
+function toAbsolute(src, base = REDVELVET_BASE) {
   if (!src) return '';
   if (/^https?:\/\//i.test(src)) return src;
   if (src.startsWith('//')) return `https:${src}`;
-  return `${REDVELVET_BASE}${src.startsWith('/') ? '' : '/'}${src}`;
+  if (src.startsWith('/')) return `${REDVELVET_BASE}${src}`;
+  // relative path — resolve against base
+  try { return new URL(src, base).href; } catch { return `${REDVELVET_BASE}/${src}`; }
 }
 
 function attr(html, tag, attrName) {
@@ -23,11 +25,18 @@ function attr(html, tag, attrName) {
 }
 
 function parseProfileDetails(html, profileUrl) {
-  // Name and area from URL segments
+  // Name and area from URL segments (slug or query-string after redirect)
   const urlMatch = profileUrl.match(/\/escorts\/escorts_details\/([^/]+)\/([^/]+)\/(\d+)/i);
-  const pathId   = urlMatch?.[3] || profileUrl.match(/\/(\d+)(?:\/?$)/)?.[1] || '';
+  const qsMatch  = !urlMatch && profileUrl.match(/[?&]userid=(\d+)/i);
+  const pathId   = urlMatch?.[3] || qsMatch?.[1] || profileUrl.match(/\/(\d+)(?:\/?$)/)?.[1] || '';
   const nameFromUrl = urlMatch ? decodeURIComponent(urlMatch[1]).replace(/\+/g, ' ').trim() : '';
   const areaFromUrl = urlMatch ? decodeURIComponent(urlMatch[2]).replace(/\+/g, ' ').trim() : '';
+
+  // Name/area from slug link inside the page (handles ?userid= entry point)
+  const slugInPage = html.match(/\/escorts\/escorts_details\/([^/]+)\/([^/]+)\/(\d+)/i);
+  const nameFromSlug = slugInPage ? decodeURIComponent(slugInPage[1]).replace(/\+/g, ' ').trim() : '';
+  const areaFromSlug = slugInPage ? decodeURIComponent(slugInPage[2]).replace(/\+/g, ' ').trim() : '';
+  const uidFromSlug  = slugInPage?.[3] || '';
 
   // Name/area fallback from h1
   const h1Match = html.match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i);
@@ -35,8 +44,9 @@ function parseProfileDetails(html, profileUrl) {
   const nameFromH1 = h1Text.split(/\bin\b/i)[0].trim();
   const areaFromH1 = (h1Text.match(/\bin\s+(.+)$/i)?.[1] || '').trim();
 
-  const name = nameFromUrl || nameFromH1 || `Profile ${pathId}`;
-  const area = areaFromUrl || areaFromH1;
+  const name = nameFromUrl || nameFromSlug || nameFromH1 || `Profile ${pathId}`;
+  const area = areaFromUrl || areaFromSlug || areaFromH1;
+  const uid  = pathId || uidFromSlug;
 
   // Age / bust from labelled elements
   const ageMatch  = html.match(/id="ctl00_ContentPlaceHolder1_lbl_age"[^>]*>([\s\S]*?)<\//i);
@@ -58,29 +68,61 @@ function parseProfileDetails(html, profileUrl) {
   const phoneMatch = html.match(/href="tel:([^"]+)"/i);
   const phone = phoneMatch ? phoneMatch[1].trim() : '';
 
-  // Images from /uploadimages/
-  const imgPattern = /<img\b[^>]*src="([^"]*\/uploadimages\/[^"]+)"/gi;
-  const images = [];
   const seenMedia = new Set();
-  let im;
-  while ((im = imgPattern.exec(html)) !== null) {
-    const abs = toAbsolute(decodeHtmlEntities(im[1]));
+  const images = [];
+
+  function addImage(src) {
+    const abs = toAbsolute(decodeHtmlEntities(src));
     if (abs && !seenMedia.has(abs)) { seenMedia.add(abs); images.push(abs); }
   }
 
-  // Videos from <video> or <source> tags (available to logged-in members)
-  const videos = [];
-  const videoPattern = /<(?:video|source)\b[^>]*src="([^"]*\/uploadimages\/[^"]+\.(?:mp4|webm|ogg|mov))[^"]*"/gi;
-  let vm;
-  while ((vm = videoPattern.exec(html)) !== null) {
-    const abs = toAbsolute(decodeHtmlEntities(vm[1]));
-    if (abs && !seenMedia.has(abs)) { seenMedia.add(abs); videos.push(abs); }
-  }
+  // All /uploadimages/ references anywhere in the HTML — double or single quotes
+  const uploadAnyRe = /["']((https?:\/\/[^"']*)?\/uploadimages\/[^"']+)["']/gi;
+  let im;
+  while ((im = uploadAnyRe.exec(html)) !== null) addImage(im[1]);
 
-  return { pathId, name, area, age, bust, phone, tags, images, videos };
+  // Selfie images from /selfies/up/ — double or single quotes
+  const selfieRe = /src=["']([^"']*\/selfies\/up\/[^"']+)["']/gi;
+  let sm;
+  while ((sm = selfieRe.exec(html)) !== null) addImage(sm[1]);
+
+  // Videos link: /selfies/escort_videos/Name/Area/UID
+  const videoPageHref = (html.match(/href=["'](\/selfies\/escort_videos\/[^"']+)["']/i) || [])[1] || '';
+
+  // Raw/uncensored images link: /escorts/raw_escort_details/Name/Area/UID (href may be relative)
+  const rawPageHref = (html.match(/href=["']([^"']*raw_escort_details\/[^"']+)["']/i) || [])[1] || '';
+
+  return { uid, name, area, age, bust, phone, tags, images, videoPageUrl: videoPageHref ? toAbsolute(videoPageHref, profileUrl) : '', rawPageUrl: rawPageHref ? toAbsolute(rawPageHref, profileUrl) : '' };
 }
 
-async function fetchAuthenticated(url) {
+function parseRawPage(html) {
+  const images = [];
+  const seen = new Set();
+  const gallerySection = html.match(/class="gallery-container"([\s\S]*)/i)?.[0] || html;
+  const re = /<img\b[^>]*src="([^"]*\/uploadimages\/[^"]+)"/gi;
+  let m;
+  while ((m = re.exec(gallerySection)) !== null) {
+    const abs = toAbsolute(decodeHtmlEntities(m[1]));
+    if (abs && !seen.has(abs)) { seen.add(abs); images.push(abs); }
+  }
+  return images;
+}
+
+function parseVideoPage(html) {
+  const videos = [];
+  const seenMedia = new Set();
+  // <source src="/selfies/up/....mp4#t=0.5" ...>
+  const srcRe = /<source\b[^>]*src=["']([^"']*\/selfies\/up\/[^"']+\.(?:mp4|webm|ogg|mov))[^"']*["']/gi;
+  let m;
+  while ((m = srcRe.exec(html)) !== null) {
+    // strip fragment (#t=0.5) for clean URL
+    const clean = toAbsolute(decodeHtmlEntities(m[1]).replace(/#.*$/, ''));
+    if (clean && !seenMedia.has(clean)) { seenMedia.add(clean); videos.push(clean); }
+  }
+  return videos;
+}
+
+async function fetchAuthenticated(url, returnFinalUrl = false) {
   const cookie = await getSessionCookie();
   const headers = { 'User-Agent': 'Mozilla/5.0', ...(cookie ? { Cookie: cookie } : {}) };
 
@@ -94,53 +136,72 @@ async function fetchAuthenticated(url) {
   }
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
+  const finalUrl = res.url || url;
 
   // If redirected to login page the session has expired — clear and retry once without auth
-  if (/members\/login/i.test(res.url) || /id="ctl00_ContentPlaceHolder1_btnLogin"/i.test(html)) {
+  if (/userlogin\/login/i.test(finalUrl) || /members\/login/i.test(finalUrl) || /ctl00_ContentPlaceHolder1_txtLoginEmail/i.test(html)) {
     clearSessionCookie();
     const controller2 = new AbortController();
     const timer2 = setTimeout(() => controller2.abort(), REQUEST_TIMEOUT_MS);
+    let res2;
     try {
-      const res2 = await fetch(url, { redirect: 'follow', signal: controller2.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      res2 = await fetch(url, { redirect: 'follow', signal: controller2.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
       if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
-      return res2.text();
     } finally {
       clearTimeout(timer2);
     }
+    const html2 = await res2.text();
+    return returnFinalUrl ? { html: html2, finalUrl: res2.url || url } : html2;
   }
 
-  return html;
+  return returnFinalUrl ? { html, finalUrl } : html;
 }
 
 async function fetchRedvelvetProfileDetails(profileUrl) {
-  const html = await fetchAuthenticated(profileUrl);
-  const parsed = parseProfileDetails(html, profileUrl);
+  const { html, finalUrl } = await fetchAuthenticated(profileUrl, true);
+  const parsed = parseProfileDetails(html, finalUrl);
 
-  // Resolve area URL server-side
-  let areaUrl = '';
-  if (parsed.area) {
-    try {
-      const areaMap = await buildRedvelvetAreaHashMap();
-      const entry = findAreaEntryByName(areaMap, parsed.area, '2');
-      if (entry) areaUrl = entry.url;
-    } catch { /* non-fatal */ }
-  }
+  // Fetch secondary pages concurrently with area resolution
+  const [areaEntry, videosFromPage, rawImages] = await Promise.all([
+    parsed.area
+      ? buildRedvelvetAreaHashMap()
+          .then(m => findAreaEntryByName(m, parsed.area, '2'))
+          .catch(() => null)
+      : Promise.resolve(null),
+    parsed.videoPageUrl
+      ? fetchAuthenticated(parsed.videoPageUrl)
+          .then(vhtml => parseVideoPage(vhtml))
+          .catch(() => [])
+      : Promise.resolve([]),
+    parsed.rawPageUrl
+      ? fetchAuthenticated(parsed.rawPageUrl)
+          .then(rhtml => parseRawPage(rhtml))
+          .catch(() => [])
+      : Promise.resolve([]),
+  ]);
 
   const profile = {
     provider: 'redvelvet',
-    uid: parsed.pathId,
+    uid: parsed.uid,
     name: parsed.name,
     area: parsed.area,
-    areaUrl,
+    areaUrl: areaEntry?.url || '',
     thumbUrl: parsed.images[0] || '',
-    profileUrl,
+    profileUrl: finalUrl,
     phone: parsed.phone,
     age: parsed.age,
     bust: parsed.bust,
     tags: parsed.tags,
   };
 
-  return { profile, directImages: parsed.images, videos: parsed.videos };
+  // Merge raw images, deduplicating against profile images
+  const seenImages = new Set(parsed.images);
+  const allImages = [...parsed.images];
+  for (const url of rawImages) {
+    if (!seenImages.has(url)) { seenImages.add(url); allImages.push(url); }
+  }
+
+  return { profile, directImages: allImages, videos: videosFromPage };
 }
 
 async function handleRedvelvetProfileDetails(req, res, serverBase) {
@@ -160,7 +221,7 @@ async function handleRedvelvetProfileDetails(req, res, serverBase) {
     const result = await fetchRedvelvetProfileDetails(profileUrl);
     send(res, 200, JSON.stringify(result), {
       'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'public, max-age=300',
+      'Cache-Control': 'no-store',
     });
   } catch (err) {
     send(res, 502, JSON.stringify({ error: err.message }), {

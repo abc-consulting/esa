@@ -524,19 +524,40 @@ async function toggleRedvelvetArea(area) {
 }
 
 async function fetchRedvelvetImagesFromProfile(uidOrId) {
-  const redvelvetResult = await fetchRedvelvetImagesFromProfileService(uidOrId, { setStatus, searchBtn });
-  if (!redvelvetResult) return;
+  // Extract numeric UID from URL or use as-is if already numeric
+  const uid = /^\d+$/.test(String(uidOrId)) ? String(uidOrId) : extractUidFromUrl(String(uidOrId));
+  if (!uid) {
+    setStatus('Could not determine profile ID.', true);
+    return;
+  }
 
-  renderProfileDetails(redvelvetResult.profile);
+  setStatus('<span class="spinner"></span>Fetching profile…');
+  searchBtn.disabled = true;
+
+  let data;
+  try {
+    const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+    const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(uid)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+    if (data.error) throw new Error(data.error);
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, true);
+    searchBtn.disabled = false;
+    return;
+  }
+
+  searchBtn.disabled = false;
+  renderProfileDetails(data.profile);
 
   subIdArray       = [];
   subIdPicCounts   = new Map();
-  galleryImageUrls = redvelvetResult.directImages;
+  galleryImageUrls = data.directImages || [];
 
-  const directCount = galleryImageUrls.length;
-  setStatus(`Found ${directCount} RedVelvet image${directCount === 1 ? '' : 's'}.`);
+  const totalCount = galleryImageUrls.length + (data.videos?.length || 0);
+  setStatus(`Found ${totalCount} RedVelvet media item${totalCount === 1 ? '' : 's'}.`);
   profileDetailsContainer.scrollIntoView({ behavior: 'smooth' });
-  setTimeout(renderImages, 300);
+  setTimeout(() => renderImages(data.videos || []), 300);
 }
 
 // ─── RENDERING ────────────────────────────────────────────────────────────
@@ -759,7 +780,7 @@ function renderDownloadAllBtn(relayBase, toRelayImageUrl) {
   imagesContainer.before(btn);
 }
 
-function renderImages() {
+function renderImages(videos = []) {
   clearImages();
 
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
@@ -815,6 +836,34 @@ function renderImages() {
       slot++;
       subSlot++;
     }
+  });
+
+  // Videos (RedVelvet selfie videos from /selfies/up/)
+  (videos || []).forEach((url, idx) => {
+    const relayUrl = toRelayImageUrl(url);
+    const item = document.createElement('div');
+    item.className = 'masonry-item';
+    const video = document.createElement('video');
+    video.controls = true;
+    video.preload = 'metadata';
+    video.loop = true;
+    video.className = 'masonry-img';
+    video.style.animationDelay = `${slot * 60}ms`;
+    const source = document.createElement('source');
+    source.src = relayUrl;
+    source.type = 'video/mp4';
+    video.appendChild(source);
+    const filename = `${profileName}_video_${String(idx + 1).padStart(2, '0')}.mp4`;
+    const dlBtn = document.createElement('a');
+    dlBtn.className = 'img-download-btn';
+    dlBtn.title = 'Download video';
+    dlBtn.textContent = '⬇';
+    dlBtn.href = relayUrl;
+    dlBtn.download = filename;
+    item.appendChild(video);
+    item.appendChild(dlBtn);
+    imagesContainer.appendChild(item);
+    slot++;
   });
 
   if (slot > 0) renderDownloadAllBtn(relayBase, toRelayImageUrl);

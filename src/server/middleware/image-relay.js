@@ -22,7 +22,7 @@ async function handleImageRelay(req, res, serverBase) {
       signal: controller.signal,
       headers: {
         'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
-        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        'Accept': '*/*',
       },
     });
 
@@ -32,22 +32,32 @@ async function handleImageRelay(req, res, serverBase) {
     }
 
     const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
-    if (!contentType.toLowerCase().startsWith('image/')) {
-      send(res, 415, 'Upstream response is not an image');
+    const ct = contentType.toLowerCase();
+    const isImage = ct.startsWith('image/');
+    const isVideo = ct.startsWith('video/') || ct === 'application/octet-stream' && /\.(mp4|webm|ogg|mov)(\?|$)/i.test(target);
+    if (!isImage && !isVideo) {
+      send(res, 415, 'Upstream response is not an image or video');
       return;
     }
 
     const contentLength = Number(upstream.headers.get('content-length') || 0);
-    if (contentLength > MAX_IMAGE_BYTES) {
+    if (isImage && contentLength > MAX_IMAGE_BYTES) {
       send(res, 413, 'Image too large');
       return;
     }
 
-    res.writeHead(200, {
+    const responseHeaders = {
       'Content-Type': contentType,
       'Cache-Control': 'public, max-age=3600',
       'X-Relay-Source': new URL(target).hostname,
-    });
+    };
+    if (upstream.headers.get('content-length')) {
+      responseHeaders['Content-Length'] = upstream.headers.get('content-length');
+    }
+    if (upstream.headers.get('accept-ranges')) {
+      responseHeaders['Accept-Ranges'] = upstream.headers.get('accept-ranges');
+    }
+    res.writeHead(200, responseHeaders);
 
     const reader = upstream.body.getReader();
     let total = 0;
@@ -57,7 +67,7 @@ async function handleImageRelay(req, res, serverBase) {
       if (done) break;
 
       total += value.byteLength;
-      if (total > MAX_IMAGE_BYTES) {
+      if (isImage && total > MAX_IMAGE_BYTES) {
         res.destroy();
         return;
       }

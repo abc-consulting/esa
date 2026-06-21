@@ -14,6 +14,7 @@ const {
 const { handleRedvelvetTags, buildRedvelvetTagHashMap } = require('./redvelvet/tags');
 const { handleRedvelvetProfileLookup, handleRedvelvetTagProfiles } = require('./redvelvet/profiles');
 const { handleRedvelvetProfileDetails } = require('./redvelvet/profile-details');
+const { getSessionCookie } = require('./redvelvet/auth');
 
 const server = http.createServer(async (req, res) => {
   const serverBase = `http://${req.headers.host || `localhost:${PORT}`}`;
@@ -45,6 +46,12 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url && req.url.startsWith('/redvelvet-profile-details?')) {
     await handleRedvelvetProfileDetails(req, res, serverBase);
+    return;
+  }
+
+  if (req.url === '/rv-auth-status') {
+    const cookie = await getSessionCookie().catch(() => null);
+    send(res, 200, JSON.stringify({ loggedIn: !!cookie, cookie: cookie ? cookie.slice(0, 40) + '…' : null }), { 'Content-Type': 'application/json' });
     return;
   }
 
@@ -82,5 +89,12 @@ server.listen(PORT, () => {
   buildRedvelvetTagHashMap().catch(err => console.error('Tag hashmap warmup failed:', err));
   if (!process.env.RV_EMAIL || !process.env.RV_PASSWORD) {
     console.warn('[RV Auth] RV_EMAIL / RV_PASSWORD not set — fetching without login');
+  } else {
+    getSessionCookie()
+      .then(cookie => {
+        if (cookie) console.log('[RV Auth] Session ready');
+        else console.warn('[RV Auth] Login failed — check credentials');
+      })
+      .catch(err => console.error('[RV Auth] Warmup error:', err.message));
   }
 });
