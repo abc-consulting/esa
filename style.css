@@ -675,3 +675,40 @@ body {
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 900px) {
+  #images-container { columns: 2; }
+}
+
+@media (max-width: 600px) {
+  .topbar { padding: 8px 12px; }
+
+  .search-bar input { min-width: 0; max-width: 100%; width: 100%; }
+
+  .filter { flex-direction: column; align-items: stretch; }
+  .filter input { max-width: 100%; }
+
+  #redvelvet-detail-filters { flex-wrap: wrap; }
+  #redvelvet-detail-filters input { width: auto; flex: 1; min-width: 70px; }
+  #redvelvet-detail-filters input[id="bustInput"] { width: auto; }
+
+  .multi-select-panel { min-width: 0; width: 90vw; max-width: 320px; }
+
+  #content-layout { padding: 0 8px; }
+  #favorites-details { padding: 10px 8px; }
+
+  #content-layout.has-profile { grid-template-columns: 1fr; }
+  #content-layout.has-profile #profiles-container {
+    position: static;
+    max-height: none;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .profile-thumb { width: 110px; height: 110px; }
+  .profile-name { font-size: 1.3rem; }
+  .area-name { font-size: 1.3rem; }
+  .profile-details-name { font-size: 1.8rem; white-space: normal; }
+
+  #images-container { columns: 1; }
+}
