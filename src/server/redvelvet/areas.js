@@ -168,30 +168,37 @@ function parseRedvelvetProfileFromHref(href, fallbackName = '') {
 function parseRedvelvetAreaProfiles(html) {
   const profiles = [];
   const byUid = new Set();
-  const anchorPattern = /<a\b[^>]*href="([^"]*\/escorts\/escorts_details[^"#]+)"[^>]*>([\s\S]*?)<\/a>/gi;
-  let match;
 
-  while ((match = anchorPattern.exec(html)) !== null) {
-    const href = match[1] || '';
-    const innerText = (match[2] || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-    const parsed = parseRedvelvetProfileFromHref(href, innerText);
+  // Split into per-profile card blocks using the image-container div as the boundary
+  // Each profile card starts with class="image-container"
+  const cardSplitRe = /(?=<div\b[^>]*class="image-container")/gi;
+  const blocks = html.split(cardSplitRe);
 
+  for (const block of blocks) {
+    // Extract profile URL from the first escorts_details anchor
+    const hrefMatch = block.match(/href="([^"]*\/escorts\/escorts_details[^"#]+)"/i);
+    if (!hrefMatch) continue;
+
+    const parsed = parseRedvelvetProfileFromHref(hrefMatch[1]);
     if (!parsed) continue;
 
     const uidKey = String(parsed.uid || '').trim();
     if (!uidKey || byUid.has(uidKey)) continue;
     byUid.add(uidKey);
 
-    const innerHtml = match[2] || '';
-    const imgMatch = innerHtml.match(/<img\b[^>]*src="([^"]+)"/i);
+    const imgMatch = block.match(/<img\b[^>]*src="([^"]+)"/i);
     const thumbUrl = imgMatch
       ? new URL(imgMatch[1], 'https://redvelvet.co.za/').href
       : '';
+
+    const phoneMatch = block.match(/cellNumberLabel[^>]*>([^<]+)</i);
+    const phone = phoneMatch ? phoneMatch[1].trim() : '';
 
     profiles.push({
       provider: 'redvelvet',
       ...parsed,
       thumbUrl,
+      phone,
     });
   }
 

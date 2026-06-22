@@ -67,9 +67,10 @@ function parseProfileDetails(html, profileUrl) {
     if (t) tags.push(t);
   }
 
-  // Phone
-  const phoneMatch = html.match(/href="tel:([^"]+)"/i);
-  const phone = phoneMatch ? phoneMatch[1].trim() : '';
+  // Phone — rendered via JS tel: link; number lives in lbl_cell span
+  const phoneMatch = html.match(/id="ctl00_ContentPlaceHolder1_lbl_cell"[^>]*>([\s\S]*?)<\//i)
+    || html.match(/href="tel:([^"]+)"/i);
+  const phone = phoneMatch ? stripTags(decodeHtmlEntities(phoneMatch[1])).trim() : '';
 
   const seenMedia = new Set();
   const images = [];
@@ -275,7 +276,7 @@ async function handleRedvelvetProfileDetails(req, res, serverBase) {
 async function fetchProfileAgeAndBust(uid) {
   try {
     const meta = await fetchProfileMeta(uid);
-    return { age: meta.age, bust: meta.bust };
+    return { age: meta.age, bust: meta.bust, tags: meta.tags || [] };
   } catch {
     return null;
   }

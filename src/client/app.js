@@ -2,6 +2,7 @@ import { IMAGE_RELAY_BASE_URL, STORAGE_KEYS } from './modules/config.js';
 import { dom } from './modules/dom.js';
 import {
   parseJsonStorage,
+  writeJsonStorage,
   setStorageScopedValue,
   readSelectedProvider,
   saveSelectedProviderToStorage,
@@ -78,10 +79,11 @@ let ageMin = null, ageMax = null, selectedBand = null, selectedCup = '', sizeMin
 
 // ─── BUST SIZE HELPERS ────────────────────────────────────────────────────
 
-const CUP_INDEX = { A: 1, B: 2, C: 3, D: 4, DD: 5 };
+const CUP_INDEX = { A: 1, B: 2, C: 3, D: 4, DD: 5, E: 6, F: 7, G: 8, H: 9 };
+const CHIP_COLLAPSE_THRESHOLD = 3;
 
 function parseBust(str) {
-  const m = String(str || '').trim().match(/^(\d+)\s*(A|B|C|DD|D)$/i);
+  const m = String(str || '').trim().match(/^(\d+)\s*(A|B|C|DD|D|E|F|G|H)$/i);
   if (!m) return null;
   return { band: parseInt(m[1]), cup: m[2].toUpperCase() };
 }
@@ -101,10 +103,25 @@ const SIZE_LEVELS = [
   { vol: 21, label: '34D',  sisters: ['32DD', '36C', '38B', '40A'] },
   { vol: 22, label: '34DD', sisters: ['36D', '38C', '40B', '42A'] },
   { vol: 23, label: '36DD', sisters: ['38D', '40C', '42B', '44A'] },
-  { vol: 24, label: '38DD', sisters: ['40D', '42C', '44B'] },
-  { vol: 25, label: '40DD', sisters: ['42D', '44C'] },
-  { vol: 26, label: '42DD', sisters: ['44D'] },
-  { vol: 27, label: '44DD', sisters: [] },
+  { vol: 24, label: '34E',  sisters: ['36E', '38D', '40C', '42B', '44A'] },
+  { vol: 25, label: '36E',  sisters: ['38DD', '40D', '42C', '44B'] },
+  { vol: 26, label: '38E',  sisters: ['40DD', '42D', '44C'] },
+  { vol: 27, label: '40E',  sisters: ['42DD', '44D'] },
+  { vol: 28, label: '42E',  sisters: ['44DD'] },
+  { vol: 29, label: '34F',  sisters: ['36F', '44E'] },
+  { vol: 30, label: '36F',  sisters: ['38E', '40F'] },
+  { vol: 31, label: '38F',  sisters: ['40E', '42F'] },
+  { vol: 32, label: '40F',  sisters: ['42E', '44F'] },
+  { vol: 33, label: '34G',  sisters: ['36G', '44F'] },
+  { vol: 34, label: '36G',  sisters: ['38F', '40G'] },
+  { vol: 35, label: '38G',  sisters: ['40F', '42G'] },
+  { vol: 36, label: '40G',  sisters: ['42F', '44G'] },
+  { vol: 37, label: '34H',  sisters: ['36H', '44G'] },
+  { vol: 38, label: '36H',  sisters: ['38G', '40H'] },
+  { vol: 39, label: '38H',  sisters: ['40G', '42H'] },
+  { vol: 40, label: '40H',  sisters: ['42G', '44H'] },
+  { vol: 41, label: '42H',  sisters: ['44G'] },
+  { vol: 42, label: '44H',  sisters: [] },
 ];
 
 // ─── DETAIL CACHE ─────────────────────────────────────────────────────────
@@ -158,6 +175,80 @@ function getCurrentProvider() {
   return siteSelect?.value === 'redvelvet' ? 'redvelvet' : 'esa';
 }
 
+function persistFilters() {
+  writeJsonStorage(STORAGE_KEYS.rvFilters, {
+    activeTags:   [...activeTags],
+    excludedTags: [...excludedTags],
+    activeAreas:  [...activeAreas],
+    excludedAreas:[...excludedAreas],
+    ageMin, ageMax, selectedBand, selectedCup, sizeMinVol, sizeMaxVol,
+    at: Date.now(),
+  });
+}
+
+async function restoreFilters() {
+  const saved = parseJsonStorage(STORAGE_KEYS.rvFilters, null);
+  if (!saved) return false;
+
+  // Only restore filters if they are more recent than the last nickname/area search
+  const lastSearch = parseJsonStorage(STORAGE_KEYS.lastSearch, null);
+  const lastSearchAt = (lastSearch && typeof lastSearch === 'object' && !Array.isArray(lastSearch))
+    ? (lastSearch[activeProvider]?.at ?? 0)
+    : (lastSearch?.at ?? 0);
+  if (lastSearchAt > (saved.at ?? 0)) return false;
+
+  activeTags.clear();
+  excludedTags.clear();
+  activeAreas.clear();
+  excludedAreas.clear();
+
+  (saved.activeTags   || []).forEach(t => activeTags.add(t));
+  (saved.excludedTags || []).forEach(t => excludedTags.add(t));
+  (saved.activeAreas  || []).forEach(a => activeAreas.add(a));
+  (saved.excludedAreas|| []).forEach(a => excludedAreas.add(a));
+
+  ageMin       = saved.ageMin       ?? null;
+  ageMax       = saved.ageMax       ?? null;
+  selectedBand = saved.selectedBand ?? null;
+  selectedCup  = saved.selectedCup  ?? '';
+  sizeMinVol   = saved.sizeMinVol   ?? null;
+  sizeMaxVol   = saved.sizeMaxVol   ?? null;
+
+  // Restore UI inputs
+  if (ageMinInput && ageMin !== null) ageMinInput.value = ageMin;
+  if (ageMaxInput && ageMax !== null) ageMaxInput.value = ageMax;
+  if (bandSelect  && selectedBand)    bandSelect.value  = selectedBand;
+  if (cupSelect   && selectedCup)     cupSelect.value   = selectedCup;
+
+  // Restore size dropdown button labels and selected states
+  if (sizeMinVol !== null && sizeMinBtn && sizeMinPanel) {
+    const level = SIZE_LEVELS.find(l => l.vol === sizeMinVol);
+    if (level) {
+      sizeMinBtn.textContent = `≥ ${level.label} ▾`;
+      sizeMinPanel.querySelectorAll('.size-option').forEach(r => {
+        if (Number(r.dataset.vol) === sizeMinVol) r.classList.add('selected');
+      });
+    }
+  }
+  if (sizeMaxVol !== null && sizeMaxBtn && sizeMaxPanel) {
+    const level = SIZE_LEVELS.find(l => l.vol === sizeMaxVol);
+    if (level) {
+      sizeMaxBtn.textContent = `≤ ${level.label} ▾`;
+      sizeMaxPanel.querySelectorAll('.size-option').forEach(r => {
+        if (Number(r.dataset.vol) === sizeMaxVol) r.classList.add('selected');
+      });
+    }
+  }
+
+  const hasFilters = activeTags.size > 0 || activeAreas.size > 0 ||
+                     excludedTags.size > 0 || excludedAreas.size > 0;
+  if (!hasFilters) return false;
+
+  updateFilterChips();
+  runRedvelvetSearch();
+  return true;
+}
+
 function restoreLastSearch() {
   const stored = parseJsonStorage(STORAGE_KEYS.lastSearch, null);
   const last = (stored && typeof stored === 'object' && !Array.isArray(stored))
@@ -200,6 +291,8 @@ function clearProfiles() {
   if (filterInput) filterInput.value = '';
   if (filterChips) filterChips.innerHTML = '';
   if (filterBar) filterBar.style.display = 'none';
+  const chipBar = document.getElementById('filter-chips-bar');
+  if (chipBar) chipBar.style.display = 'none';
 }
 
 function clearImages() {
@@ -450,15 +543,56 @@ function makeChip(label, onRemove, excluded = false) {
   return chip;
 }
 
+function renderChipGroup(set, makeChipFn, groupLabel, excluded) {
+  if (set.size === 0) return;
+  const items = [...set];
+  if (items.length > CHIP_COLLAPSE_THRESHOLD) {
+    const summary = document.createElement('span');
+    summary.className = 'filter-chip filter-chip--summary' + (excluded ? ' filter-chip--exclude' : '');
+    summary.textContent = `${groupLabel} (${items.length})`;
+    summary.title = items.join(', ');
+    summary.addEventListener('click', () => {
+      const parent = summary.parentNode;
+      const next = summary.nextSibling;
+      parent.removeChild(summary);
+      items.forEach(item => parent.insertBefore(makeChipFn(item), next));
+    });
+    filterChips.appendChild(summary);
+  } else {
+    items.forEach(item => filterChips.appendChild(makeChipFn(item)));
+  }
+}
+
 function updateFilterChips() {
   if (!filterChips) return;
   filterChips.innerHTML = '';
-  activeTags.forEach(tag => filterChips.appendChild(makeChip(tag, () => toggleRedvelvetTag(tag))));
-  activeAreas.forEach(area => filterChips.appendChild(makeChip(area, () => toggleRedvelvetArea(area))));
-  excludedTags.forEach(tag => filterChips.appendChild(makeChip(tag, () => excludeRedvelvetTag(tag), true)));
-  excludedAreas.forEach(area => filterChips.appendChild(makeChip(area, () => excludeRedvelvetArea(area), true)));
-  const hasChips = activeTags.size > 0 || activeAreas.size > 0 || excludedTags.size > 0 || excludedAreas.size > 0;
-  if (filterBar) filterBar.style.display = hasChips ? 'flex' : 'none';
+
+  renderChipGroup(
+    activeAreas,
+    area => makeChip(area, () => { toggleRedvelvetArea(area); runRedvelvetSearch(); }),
+    'areas', false
+  );
+  renderChipGroup(
+    activeTags,
+    tag => makeChip(tag, () => { toggleRedvelvetTag(tag); runRedvelvetSearch(); }),
+    'tags', false
+  );
+  renderChipGroup(
+    excludedAreas,
+    area => makeChip(area, () => { excludeRedvelvetArea(area); runRedvelvetSearch(); }, true),
+    '× areas', true
+  );
+  renderChipGroup(
+    excludedTags,
+    tag => makeChip(tag, () => { excludeRedvelvetTag(tag); runRedvelvetSearch(); }, true),
+    '× tags', true
+  );
+
+  const hasChips = activeTags.size > 0 || activeAreas.size > 0 ||
+                   excludedTags.size > 0 || excludedAreas.size > 0;
+  const chipBar = document.getElementById('filter-chips-bar');
+  if (chipBar) chipBar.style.display = hasChips ? 'flex' : 'none';
+
   syncTagCheckboxes();
   syncAreaCheckboxes();
 }
@@ -471,12 +605,14 @@ async function runRedvelvetSearch() {
 
   const hasIncludes = activeTags.size > 0 || activeAreas.size > 0;
   if (!hasIncludes) {
+    persistFilters();
     profileLinks = [];
     renderProfileCards();
     setStatus('');
     return;
   }
 
+  persistFilters();
   const body = {
     areas: { included: [...activeAreas], excluded: [...excludedAreas] },
     tags:  { included: [...activeTags],  excluded: [...excludedTags]  },
@@ -515,7 +651,6 @@ function toggleRedvelvetTag(tag) {
     activeTags.add(tag);
   }
   updateFilterChips();
-  runRedvelvetSearch();
 }
 
 function excludeRedvelvetTag(tag) {
@@ -526,7 +661,6 @@ function excludeRedvelvetTag(tag) {
     excludedTags.add(tag);
   }
   updateFilterChips();
-  runRedvelvetSearch();
 }
 
 function toggleRedvelvetArea(area) {
@@ -538,7 +672,6 @@ function toggleRedvelvetArea(area) {
     activeAreas.add(area);
   }
   updateFilterChips();
-  runRedvelvetSearch();
 }
 
 function excludeRedvelvetArea(area) {
@@ -549,7 +682,6 @@ function excludeRedvelvetArea(area) {
     excludedAreas.add(area);
   }
   updateFilterChips();
-  runRedvelvetSearch();
 }
 
 async function fetchRedvelvetImagesFromProfile(uidOrId) {
@@ -712,7 +844,7 @@ function renderProfileDetails(profile) {
       chip.className   = 'profile-tag';
       chip.textContent = tag;
       chip.style.cursor = 'pointer';
-      chip.addEventListener('click', () => toggleRedvelvetTag(tag));
+      chip.addEventListener('click', () => { toggleRedvelvetTag(tag); runRedvelvetSearch(); });
       tagsWrap.appendChild(chip);
     });
     card.appendChild(tagsWrap);
@@ -955,6 +1087,11 @@ function processImages(imgs, extraCandidates = [], extraSubIds = []) {
 
 // ─── REDVELVET DROPDOWNS ──────────────────────────────────────────────────
 
+const TAG_GROUPS = { Race: ['Asian', 'Black', 'Coloured', 'Indian', 'White'] };
+const TAG_GROUP_MAP = new Map();
+for (const [group, labels] of Object.entries(TAG_GROUPS))
+  for (const label of labels) TAG_GROUP_MAP.set(label, group);
+
 let redvelvetDropdownsReady = false;
 
 function addPanelSearch(panel, placeholder) {
@@ -967,6 +1104,15 @@ function addPanelSearch(panel, placeholder) {
     const q = si.value.toLowerCase();
     panel.querySelectorAll('.tag-option').forEach(row => {
       row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+    panel.querySelectorAll('.tag-group-header').forEach(header => {
+      const group = header.dataset.groupHeader;
+      const labels = TAG_GROUPS[group] || [];
+      const anyVisible = labels.some(lbl => {
+        const row = panel.querySelector(`.tag-option[data-value="${CSS.escape(lbl)}"]`);
+        return row && row.style.display !== 'none';
+      });
+      header.style.display = anyVisible ? '' : 'none';
     });
   });
   panel.appendChild(si);
@@ -997,8 +1143,8 @@ async function initRedvelvetDropdowns() {
         label.textContent = area;
         row.append(box, label);
         let clickTimer;
-        row.addEventListener('click', () => { clickTimer = setTimeout(() => toggleRedvelvetArea(area), 220); });
-        row.addEventListener('dblclick', () => { clearTimeout(clickTimer); excludeRedvelvetArea(area); });
+        row.addEventListener('click', () => { clearTimeout(clickTimer); clickTimer = setTimeout(() => { toggleRedvelvetArea(area); runRedvelvetSearch(); }, 220); });
+        row.addEventListener('dblclick', () => { clearTimeout(clickTimer); excludeRedvelvetArea(area); runRedvelvetSearch(); });
         areaDropdownPanel.appendChild(row);
       });
     }
@@ -1029,7 +1175,29 @@ async function initRedvelvetDropdowns() {
       const data = await res.json();
       tagDropdownPanel.innerHTML = '';
       tagSearchInput = addPanelSearch(tagDropdownPanel, 'Search tags…');
-      (data.tags || []).forEach(({ label }) => {
+
+      // Sort: grouped tags first (in group definition order), then rest alphabetically
+      const groupOrder = Object.values(TAG_GROUPS).flat();
+      const sorted = [...(data.tags || [])].sort((a, b) => {
+        const ai = groupOrder.indexOf(a.label);
+        const bi = groupOrder.indexOf(b.label);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return a.label.localeCompare(b.label);
+      });
+
+      const insertedGroups = new Set();
+      sorted.forEach(({ label }) => {
+        const group = TAG_GROUP_MAP.get(label);
+        if (group && !insertedGroups.has(group)) {
+          insertedGroups.add(group);
+          const header = document.createElement('div');
+          header.className = 'tag-group-header';
+          header.textContent = group;
+          header.dataset.groupHeader = group;
+          tagDropdownPanel.appendChild(header);
+        }
         const row = document.createElement('div');
         row.className = 'tag-option';
         row.dataset.value = label;
@@ -1040,8 +1208,8 @@ async function initRedvelvetDropdowns() {
         labelSpan.textContent = label;
         row.append(box, labelSpan);
         let clickTimer;
-        row.addEventListener('click', () => { clickTimer = setTimeout(() => toggleRedvelvetTag(label), 220); });
-        row.addEventListener('dblclick', () => { clearTimeout(clickTimer); excludeRedvelvetTag(label); });
+        row.addEventListener('click', () => { clearTimeout(clickTimer); clickTimer = setTimeout(() => { toggleRedvelvetTag(label); runRedvelvetSearch(); }, 220); });
+        row.addEventListener('dblclick', () => { clearTimeout(clickTimer); excludeRedvelvetTag(label); runRedvelvetSearch(); });
         tagDropdownPanel.appendChild(row);
       });
     }
@@ -1053,7 +1221,7 @@ async function initRedvelvetDropdowns() {
     tagDropdownPanel.style.display = open ? 'none' : 'block';
     if (!open && tagSearchInput) {
       tagSearchInput.value = '';
-      tagDropdownPanel.querySelectorAll('.tag-option').forEach(r => r.style.display = '');
+      tagDropdownPanel.querySelectorAll('.tag-option, .tag-group-header').forEach(r => r.style.display = '');
       tagSearchInput.focus();
     }
   });
@@ -1192,8 +1360,11 @@ if (siteSelect) {
   siteSelect.value = activeProvider;
   if (activeProvider === 'redvelvet') {
     showRedvelvetDropdowns();
-    initRedvelvetDropdowns();
     initSizeDropdowns();
+    initRedvelvetDropdowns().then(async () => {
+      const didFilter = await restoreFilters();
+      if (!didFilter) restoreLastSearch();
+    });
   }
   siteSelect.addEventListener('change', () => {
     saveSelectedProvider(getCurrentProvider());
@@ -1205,12 +1376,15 @@ if (siteSelect) {
     renderFavoritesPanel();
     if (activeProvider === 'redvelvet') {
       showRedvelvetDropdowns();
-      initRedvelvetDropdowns();
       initSizeDropdowns();
+      initRedvelvetDropdowns().then(async () => {
+        const didFilter = await restoreFilters();
+        if (!didFilter) restoreLastSearch();
+      });
     } else {
       hideRedvelvetDropdowns();
+      restoreLastSearch();
     }
-    restoreLastSearch();
   });
 }
 
@@ -1232,4 +1406,4 @@ initFavorites({
 
 loadFavorites();
 renderFavoritesPanel();
-restoreLastSearch();
+if (activeProvider !== 'redvelvet') restoreLastSearch();

@@ -120,6 +120,20 @@ body {
 .multi-select-panel::-webkit-scrollbar-track { background: transparent; }
 .multi-select-panel::-webkit-scrollbar-thumb { background: #4a4a6a; border-radius: 4px; }
 
+.tag-group-header {
+  padding: 8px 14px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6b7280;
+  pointer-events: none;
+  user-select: none;
+  border-top: 1px solid #1e2d4a;
+  margin-top: 4px;
+}
+.tag-group-header:first-child { border-top: none; margin-top: 0; }
+
 .tag-option {
   display: flex;
   align-items: center;
@@ -281,6 +295,13 @@ body {
   margin-top: 1px;
 }
 
+#filter-chips-bar {
+  display: flex;
+  max-width: 900px;
+  margin: 0 auto 12px;
+  padding: 0 16px;
+}
+
 #filter-chips {
   display: flex;
   align-items: center;
@@ -319,6 +340,15 @@ body {
   background: #be123c;
   border-color: #f43f5e;
 }
+
+.filter-chip--summary {
+  background: #1e3a5f;
+  border-color: #4a7abf;
+  cursor: pointer;
+}
+.filter-chip--summary:hover { background: #2a4f80; }
+.filter-chip--summary.filter-chip--exclude { background: #7f0e28; border-color: #c0294a; }
+.filter-chip--summary.filter-chip--exclude:hover { background: #a01232; }
 
 #favorites-details {
   max-width: 1200px;

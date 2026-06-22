@@ -10,4 +10,5 @@ export const STORAGE_KEYS = {
   favorites: 'esa.favorites.v2',
   lastSearch: 'esa.lastSearch.v2',
   provider: 'esa.provider.v1',
+  rvFilters: 'esa.rvFilters.v1',
 };
