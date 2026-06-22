@@ -6,7 +6,6 @@ export const dom = {
   areaInput: document.getElementById('areaInput'),
   filterBar: document.getElementById('filter-bar'),
   filterInput: document.getElementById('filterInput'),
-  filterBtn: document.getElementById('filterBtn'),
   filterChips: document.getElementById('filter-chips'),
   status: document.getElementById('status'),
   selectedOutput: document.getElementById('selected-output'),

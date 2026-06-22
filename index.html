@@ -11,6 +11,10 @@
 
   <nav class="topbar">
     <span class="app-name">WG Search</span>
+    <button id="profiles-fab" style="display:none">
+      <span id="profiles-fab-icon"> 👥 </span>
+      <span id="profiles-fab-count"></span>
+    </button>
     <select id="siteSelect">
       <option value="esa">ESA</option>
       <option value="redvelvet">RedVelvet</option>
@@ -50,41 +54,9 @@
       autocomplete="off"
     />
     <div id="redvelvet-detail-filters" style="display:none">
-      <input type="number" id="ageMinInput" placeholder="Age min" min="18" max="99" />
-      <input type="number" id="ageMaxInput" placeholder="Age max" min="18" max="99" />
-      <select id="bandSelect">
-        <option value="">Band</option>
-        <option value="28">28</option>
-        <option value="30">30</option>
-        <option value="32">32</option>
-        <option value="34">34</option>
-        <option value="36">36</option>
-        <option value="38">38</option>
-        <option value="40">40</option>
-        <option value="42">42</option>
-        <option value="44">44</option>
-      </select>
-      <select id="cupSelect">
-        <option value="">Cup</option>
-        <option value="A">A</option>
-        <option value="B">B</option>
-        <option value="C">C</option>
-        <option value="D">D</option>
-        <option value="DD">DD</option>
-        <option value="E">E</option>
-        <option value="F">F</option>
-        <option value="G">G</option>
-        <option value="H">H</option>
-      </select>
-      <div id="sizeMinWrap" class="size-dropdown-wrap">
-        <button id="sizeMinBtn" class="multi-select-btn" type="button">Min size ▾</button>
-        <div id="sizeMinPanel" class="multi-select-panel size-panel" style="display:none"></div>
-      </div>
-      <div id="sizeMaxWrap" class="size-dropdown-wrap">
-        <button id="sizeMaxBtn" class="multi-select-btn" type="button">Max size ▾</button>
-        <div id="sizeMaxPanel" class="multi-select-panel size-panel" style="display:none"></div>
-      </div>
-      <button id="filterBtn">Filter</button>
+      <span class="filter-by-label">Filter by</span>
+      <button id="ageFilterBtn" class="filter-by-btn" type="button">Age</button>
+      <button id="bustFilterBtn" class="filter-by-btn" type="button">Bust size</button>
     </div>
   </div>
   <div id="filter-chips-bar" style="display:none">
@@ -97,11 +69,87 @@
     <div id="favorites-container"></div>
   </details>
   <div id="content-layout">
-    <div id="profiles-container"></div>
+    <div id="profiles-sidebar-sticky">
+      <div id="profiles-container"></div>
+    </div>
     <div id="main-area">
       <div id="profile-details-container"></div>
       <div id="images-container"></div>
       <div id="selected-output"></div>
+    </div>
+  </div>
+
+  <!-- Age filter modal -->
+  <div id="age-modal" class="filter-modal" style="display:none">
+    <div class="filter-modal-box">
+      <h3 class="filter-modal-title">Filter by Age</h3>
+      <div class="filter-modal-row">
+        <input type="number" id="ageMinInput" placeholder="Min age" min="18" max="99" />
+        <span class="filter-modal-sep">–</span>
+        <input type="number" id="ageMaxInput" placeholder="Max age" min="18" max="99" />
+      </div>
+      <div class="filter-modal-actions">
+        <button id="ageClearBtn" class="filter-modal-clear" type="button">Clear</button>
+        <button id="ageApplyBtn" class="filter-modal-apply" type="button">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bust filter modal -->
+  <div id="bust-modal" class="filter-modal" style="display:none">
+    <div class="filter-modal-box">
+      <h3 class="filter-modal-title">Filter by Bust Size</h3>
+      <div class="filter-modal-row">
+        <select id="bandSelect">
+          <option value="">Band</option>
+          <option value="28">28</option>
+          <option value="30">30</option>
+          <option value="32">32</option>
+          <option value="34">34</option>
+          <option value="36">36</option>
+          <option value="38">38</option>
+          <option value="40">40</option>
+          <option value="42">42</option>
+          <option value="44">44</option>
+        </select>
+        <select id="cupSelect">
+          <option value="">Cup</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+          <option value="D">D</option>
+          <option value="DD">DD</option>
+          <option value="E">E</option>
+          <option value="F">F</option>
+          <option value="G">G</option>
+          <option value="H">H</option>
+        </select>
+      </div>
+      <div class="filter-modal-row">
+        <div id="sizeMinWrap" class="size-dropdown-wrap">
+          <button id="sizeMinBtn" class="multi-select-btn" type="button">Min size ▾</button>
+          <div id="sizeMinPanel" class="multi-select-panel size-panel" style="display:none"></div>
+        </div>
+        <div id="sizeMaxWrap" class="size-dropdown-wrap">
+          <button id="sizeMaxBtn" class="multi-select-btn" type="button">Max size ▾</button>
+          <div id="sizeMaxPanel" class="multi-select-panel size-panel" style="display:none"></div>
+        </div>
+      </div>
+      <div class="filter-modal-actions">
+        <button id="bustClearBtn" class="filter-modal-clear" type="button">Clear</button>
+        <button id="bustApplyBtn" class="filter-modal-apply" type="button">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile profiles drawer -->
+  <div id="profiles-drawer" style="display:none">
+    <div id="profiles-drawer-box">
+      <div id="profiles-drawer-header">
+        <input type="text" id="drawerFilterInput" placeholder="Filter…" autocomplete="off" />
+        <button id="profiles-drawer-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div id="profiles-drawer-list"></div>
     </div>
   </div>
 

@@ -79,7 +79,11 @@ export function toggleFavorite(profile) {
   renderFavoritesPanel();
 
   const btn = document.getElementById('favorite-toggle-btn');
-  if (btn) btn.textContent = isFavorite(uid) ? 'Remove Favorite' : 'Add To Favorites';
+  if (btn) {
+    const faved = isFavorite(uid);
+    btn.textContent = faved ? '★' : '☆';
+    btn.title = faved ? 'Remove from favorites' : 'Add to favorites';
+  }
 }
 
 export function renderFavoritesPanel() {
@@ -143,7 +147,7 @@ export function renderFavoritesPanel() {
       const activeUid = extractUidFromUrl(document.querySelector('.profile-details-name')?.href || '');
       if (activeUid && activeUid === favorite.uid && (favorite.provider || 'esa') === activeProvider) {
         const btn = document.getElementById('favorite-toggle-btn');
-        if (btn) btn.textContent = 'Add To Favorites';
+        if (btn) { btn.textContent = '☆'; btn.title = 'Add to favorites'; }
       }
     });
 

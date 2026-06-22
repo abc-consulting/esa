@@ -270,6 +270,8 @@ function restoreLastSearch() {
 
 function clearProfilesContainer() {
   profilesContainer.innerHTML = '';
+  const sidebar = document.getElementById('profiles-sidebar-sticky');
+  if (sidebar) sidebar.scrollTop = 0;
 }
 
 function clearProfiles() {
@@ -304,6 +306,8 @@ function clearImages() {
 
 function exitProfileView() {
   contentLayout?.classList.remove('has-profile');
+  document.getElementById('profiles-fab').style.display = 'none';
+  closeProfilesDrawer();
 }
 
 function clearProfileDetails() {
@@ -723,63 +727,89 @@ async function fetchRedvelvetImagesFromProfile(uidOrId) {
 
 // ─── RENDERING ────────────────────────────────────────────────────────────
 
+const CARD_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220"><rect width="100%" height="100%" fill="%23f3f3f3"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23777" font-size="16">No Image</text></svg>';
+
+function buildProfileCard(item, index, onClickExtra) {
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  const toCardImageUrl = (url) => (url && /^https?:\/\//i.test(url)) ? `${relayBase}/image?url=${encodeURIComponent(url)}` : url;
+  const buildFallback = (card) => ((card?.provider || 'esa') === 'redvelvet' && card?.uid) ? 'https://redvelvet.co.za/Assets/images/noimage.png' : '';
+
+  const uid      = item.uid;
+  const namePart = item.name || `UID ${uid}`;
+  const areaPart = item.area || '';
+  const imgSrc   = toCardImageUrl(item.thumbUrl || buildFallback(item)) || CARD_PLACEHOLDER;
+  const provider = item.provider || 'esa';
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'profile-card';
+  wrapper.style.animationDelay = `${index * 50}ms`;
+  wrapper.title = `Click to load images for uid ${uid}`;
+  wrapper.addEventListener('click', () => {
+    if (onClickExtra) onClickExtra();
+    if (provider === 'redvelvet') fetchRedvelvetImagesFromProfile(item.profileUrl);
+    else fetchImagesFromProfile(uid);
+  });
+
+  const img = document.createElement('img');
+  img.src = imgSrc; img.alt = `${namePart} ${areaPart}`.trim(); img.className = 'profile-thumb';
+
+  const name = document.createElement('div');
+  name.className = 'profile-name'; name.textContent = namePart;
+
+  const number = document.createElement('div');
+  number.className = 'profile-number'; number.textContent = areaPart;
+
+  wrapper.append(img, name, number);
+  return wrapper;
+}
+
+function isMobile() { return window.innerWidth <= 600; }
+
+function syncMobileDrawer(filteredProfiles) {
+  const fab        = document.getElementById('profiles-fab');
+  const drawerList = document.getElementById('profiles-drawer-list');
+  const fabCount   = document.getElementById('profiles-fab-count');
+  if (!fab || !drawerList) return;
+
+  const hasProfile = contentLayout?.classList.contains('has-profile');
+
+  if (filteredProfiles.length > 0 && isMobile() && hasProfile) {
+    fab.style.display = 'flex';
+    fabCount.textContent = filteredProfiles.length;
+  } else {
+    fab.style.display = 'none';
+  }
+
+  drawerList.innerHTML = '';
+  filteredProfiles.forEach((item, index) => {
+    if (!item.uid) return;
+    drawerList.appendChild(buildProfileCard(item, index, closeProfilesDrawer));
+  });
+}
+
+function openProfilesDrawer() {
+  document.getElementById('profiles-drawer').style.display = 'flex';
+  document.getElementById('drawerFilterInput').focus();
+}
+
+function closeProfilesDrawer() {
+  document.getElementById('profiles-drawer').style.display = 'none';
+}
+
 function renderProfileCards() {
   clearProfilesContainer();
 
   const filteredProfiles = profileLinks
     .filter(profile => profile.name.includes(filterKeyword) || profile.area.includes(filterKeyword));
 
-  const CARD_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220"><rect width="100%" height="100%" fill="%23f3f3f3"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23777" font-size="16">No Image</text></svg>';
-  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
-  const toRelayImageUrl = (url) => `${relayBase}/image?url=${encodeURIComponent(url)}`;
-  const toCardImageUrl = (url) => {
-    if (!url || !/^https?:\/\//i.test(url)) return url;
-    return toRelayImageUrl(url);
-  };
-
-  const buildCardFallbackThumb = (card) => {
-    if ((card?.provider || 'esa') !== 'redvelvet') return '';
-    if (!card?.uid) return '';
-    return 'https://redvelvet.co.za/Assets/images/noimage.png';
-  };
-
   if (filteredProfiles.length > 0 && filterBar) filterBar.style.display = 'flex';
 
   filteredProfiles.forEach((item, index) => {
-    const uid = item.uid;
-    if (!uid) return;
-
-    const namePart   = item.name || `UID ${uid}`;
-    const numberPart = item.area || '';
-    const imgSrc     = toCardImageUrl(item.thumbUrl || buildCardFallbackThumb(item)) || CARD_PLACEHOLDER;
-    const provider   = item.provider || 'esa';
-
-    const wrapper = document.createElement('div');
-    wrapper.className = 'profile-card';
-    wrapper.style.animationDelay = `${index * 50}ms`;
-    wrapper.title = `Click to load images for uid ${uid}`;
-    if (provider === 'redvelvet') {
-      wrapper.addEventListener('click', () => fetchRedvelvetImagesFromProfile(item.profileUrl));
-    } else {
-      wrapper.addEventListener('click', () => fetchImagesFromProfile(uid));
-    }
-
-    const img = document.createElement('img');
-    img.src       = imgSrc;
-    img.alt       = `${namePart} ${numberPart}`.trim();
-    img.className = 'profile-thumb';
-
-    const name = document.createElement('div');
-    name.className   = 'profile-name';
-    name.textContent = namePart;
-
-    const number = document.createElement('div');
-    number.className   = 'profile-number';
-    number.textContent = numberPart;
-
-    wrapper.append(img, name, number);
-    profilesContainer.appendChild(wrapper);
+    if (!item.uid) return;
+    profilesContainer.appendChild(buildProfileCard(item, index, null));
   });
+
+  syncMobileDrawer(filteredProfiles);
 }
 
 function renderProfileDetails(profile) {
@@ -789,12 +819,33 @@ function renderProfileDetails(profile) {
   const card = document.createElement('div');
   card.className = 'profile-details-card';
 
-  const name = document.createElement('a');
-  name.className   = 'profile-details-name';
-  name.textContent = profile.name;
-  name.href        = profile.profileUrl || '#';
-  name.target      = '_blank';
-  name.rel         = 'noopener noreferrer';
+  // ── Left column: avatar + name + actions ──────────────────────────────
+  const leftCol = document.createElement('div');
+  leftCol.className = 'profile-details-left';
+
+  const thumbSrc = profile.thumbUrl || '';
+  if (thumbSrc) {
+    const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+    const avatar = document.createElement('img');
+    avatar.className = 'profile-details-avatar';
+    avatar.src = `${relayBase}/image?url=${encodeURIComponent(thumbSrc)}`;
+    avatar.alt = profile.name;
+    leftCol.appendChild(avatar);
+  }
+
+  const nameActionsCol = document.createElement('div');
+  nameActionsCol.className = 'profile-details-name-col';
+
+  const nameLink = document.createElement('a');
+  nameLink.className   = 'profile-details-name';
+  nameLink.textContent = profile.name;
+  nameLink.href        = profile.profileUrl || '#';
+  nameLink.target      = '_blank';
+  nameLink.rel         = 'noopener noreferrer';
+  nameActionsCol.appendChild(nameLink);
+
+  const actionsRow = document.createElement('div');
+  actionsRow.className = 'profile-details-actions';
 
   const areaBtn = document.createElement('button');
   areaBtn.className   = 'profile-details-area';
@@ -808,24 +859,31 @@ function renderProfileDetails(profile) {
 
   const favoriteBtn = document.createElement('button');
   favoriteBtn.id        = 'favorite-toggle-btn';
-  favoriteBtn.className = 'profile-details-area';
-  favoriteBtn.textContent = isFavorite(profile.uid) ? 'Remove Favorite' : 'Add To Favorites';
+  favoriteBtn.className = 'favorite-star-btn';
+  favoriteBtn.textContent = isFavorite(profile.uid) ? '★' : '☆';
+  favoriteBtn.title = isFavorite(profile.uid) ? 'Remove from favorites' : 'Add to favorites';
   favoriteBtn.addEventListener('click', () => toggleFavorite(profile));
 
-  card.append(name, areaBtn, favoriteBtn);
+  actionsRow.append(areaBtn, favoriteBtn);
+  nameActionsCol.appendChild(actionsRow);
+  leftCol.appendChild(nameActionsCol);
+
+  // ── Right column: meta details + tags ────────────────────────────────
+  const rightCol = document.createElement('div');
+  rightCol.className = 'profile-details-right';
 
   if (profile.age) {
     const age = document.createElement('span');
     age.className   = 'profile-details-meta';
     age.textContent = `Age: ${profile.age}`;
-    card.appendChild(age);
+    rightCol.appendChild(age);
   }
 
   if (profile.bust) {
     const bust = document.createElement('span');
     bust.className   = 'profile-details-meta';
     bust.textContent = `Bust: ${profile.bust}`;
-    card.appendChild(bust);
+    rightCol.appendChild(bust);
   }
 
   if (profile.phone) {
@@ -833,7 +891,7 @@ function renderProfileDetails(profile) {
     phone.className   = 'profile-details-meta profile-details-phone';
     phone.href        = `tel:${profile.phone}`;
     phone.textContent = profile.phone;
-    card.appendChild(phone);
+    rightCol.appendChild(phone);
   }
 
   if (profile.tags?.length) {
@@ -847,10 +905,17 @@ function renderProfileDetails(profile) {
       chip.addEventListener('click', () => { toggleRedvelvetTag(tag); runRedvelvetSearch(); });
       tagsWrap.appendChild(chip);
     });
-    card.appendChild(tagsWrap);
+    rightCol.appendChild(tagsWrap);
   }
 
+  card.append(leftCol, rightCol);
   profileDetailsContainer.appendChild(card);
+
+  // Show FAB now that has-profile is active
+  if (isMobile()) {
+    const filteredProfiles = profileLinks.filter(p => p.name.includes(filterKeyword) || p.area.includes(filterKeyword));
+    syncMobileDrawer(filteredProfiles);
+  }
 }
 
 function makeDownloadBtn(relayUrl, filename) {
@@ -1265,6 +1330,7 @@ function initSizeDropdowns() {
           : defaultLabel;
         panel.style.display = 'none';
         applyDetailFilters();
+        updateFilterByBtnState();
       });
       panel.appendChild(row);
     });
@@ -1295,12 +1361,16 @@ function showRedvelvetDropdowns() {
   if (areaDropdownWrap) areaDropdownWrap.style.display = '';
   if (tagDropdownWrap) tagDropdownWrap.style.display = '';
   if (redvelvetDetailFilters) redvelvetDetailFilters.style.display = 'flex';
+  document.getElementById('areaInput').style.display = 'none';
+  dom.areaBtn.style.display = 'none';
 }
 
 function hideRedvelvetDropdowns() {
   if (areaDropdownWrap) areaDropdownWrap.style.display = 'none';
   if (tagDropdownWrap) tagDropdownWrap.style.display = 'none';
   if (redvelvetDetailFilters) redvelvetDetailFilters.style.display = 'none';
+  document.getElementById('areaInput').style.display = '';
+  dom.areaBtn.style.display = '';
 }
 
 // ─── EVENT WIRING ─────────────────────────────────────────────────────────
@@ -1353,7 +1423,90 @@ document.getElementById('areaInput')
 
 dom.searchBtn.addEventListener('click', doSearch);
 dom.areaBtn.addEventListener('click', doAreaSearch);
-dom.filterBtn.addEventListener('click', applyDetailFilters);
+
+// ── Filter modals ─────────────────────────────────────────────────────────
+
+function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function updateFilterByBtnState() {
+  const ageActive = ageMin !== null || ageMax !== null;
+  const bustActive = selectedBand !== null || selectedCup || sizeMinVol !== null || sizeMaxVol !== null;
+  document.getElementById('ageFilterBtn').classList.toggle('active', ageActive);
+  document.getElementById('bustFilterBtn').classList.toggle('active', bustActive);
+}
+
+document.getElementById('ageFilterBtn').addEventListener('click', () => openModal('age-modal'));
+document.getElementById('bustFilterBtn').addEventListener('click', () => openModal('bust-modal'));
+
+// Age modal
+document.getElementById('ageApplyBtn').addEventListener('click', () => {
+  applyDetailFilters();
+  updateFilterByBtnState();
+  closeModal('age-modal');
+});
+document.getElementById('ageClearBtn').addEventListener('click', () => {
+  ageMinInput.value = '';
+  ageMaxInput.value = '';
+  applyDetailFilters();
+  updateFilterByBtnState();
+  closeModal('age-modal');
+});
+document.getElementById('age-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) { applyDetailFilters(); updateFilterByBtnState(); closeModal('age-modal'); }
+});
+
+// Bust modal
+document.getElementById('bustApplyBtn').addEventListener('click', () => {
+  applyDetailFilters();
+  updateFilterByBtnState();
+  closeModal('bust-modal');
+});
+document.getElementById('bustClearBtn').addEventListener('click', () => {
+  bandSelect.value = '';
+  cupSelect.value = '';
+  sizeMinVol = null;
+  sizeMaxVol = null;
+  document.getElementById('sizeMinBtn').textContent = 'Min size ▾';
+  document.getElementById('sizeMaxBtn').textContent = 'Max size ▾';
+  document.getElementById('sizeMinPanel').querySelectorAll('.size-option').forEach(o => o.classList.remove('selected'));
+  document.getElementById('sizeMaxPanel').querySelectorAll('.size-option').forEach(o => o.classList.remove('selected'));
+  applyDetailFilters();
+  updateFilterByBtnState();
+  closeModal('bust-modal');
+});
+document.getElementById('bust-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) { applyDetailFilters(); updateFilterByBtnState(); closeModal('bust-modal'); }
+});
+
+// ── Mobile profiles FAB + drawer ──────────────────────────────────────────
+
+document.getElementById('profiles-fab').addEventListener('click', openProfilesDrawer);
+document.getElementById('profiles-drawer-close').addEventListener('click', closeProfilesDrawer);
+document.getElementById('profiles-drawer').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeProfilesDrawer();
+});
+
+document.getElementById('drawerFilterInput').addEventListener('input', e => {
+  const kw = e.target.value.toLowerCase();
+  document.getElementById('profiles-drawer-list').querySelectorAll('.profile-card').forEach(card => {
+    const text = card.textContent.toLowerCase();
+    card.style.display = text.includes(kw) ? '' : 'none';
+  });
+});
+
+window.addEventListener('resize', () => {
+  const fab = document.getElementById('profiles-fab');
+  if (!fab) return;
+  if (!isMobile()) {
+    fab.style.display = 'none';
+    closeProfilesDrawer();
+    // re-render cards into the sidebar on resize to desktop
+    if (profileLinks.length > 0) renderProfileCards();
+  } else if (profileLinks.length > 0) {
+    renderProfileCards();
+  }
+});
 
 activeProvider = readSelectedProvider();
 if (siteSelect) {
