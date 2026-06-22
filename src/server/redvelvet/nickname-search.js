@@ -10,7 +10,7 @@ const {
 } = require('./areas');
 const { URL } = require('url');
 const { groupProfilesByPhone } = require('../utils/groups');
-const { REQUEST_TIMEOUT_MS } = require('../constants');
+const { REQUEST_TIMEOUT_MS, POSTBACK_TIMEOUT_MS } = require('../constants');
 
 const REDVELVET_BASE = 'https://redvelvet.co.za';
 const SEARCH_URL = `${REDVELVET_BASE}/search/search`;
@@ -48,7 +48,7 @@ async function handleRedvelvetNicknameSearch(req, res, serverBase) {
 
     console.log(`[RV DEBUG] nickname-search: POST ${SEARCH_URL} nickname="${nickname}"`);
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(() => controller.abort(), POSTBACK_TIMEOUT_MS);
     try {
       const response = await fetch(SEARCH_URL, {
         method: 'POST',

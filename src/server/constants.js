@@ -6,6 +6,7 @@ const PORT = Number(process.env.PORT || 5510);
 const ROOT = path.join(__dirname, '../../');
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 15000;
+const POSTBACK_TIMEOUT_MS = 45000;
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -44,6 +45,7 @@ module.exports = {
   ROOT,
   MAX_IMAGE_BYTES,
   REQUEST_TIMEOUT_MS,
+  POSTBACK_TIMEOUT_MS,
   MIME_TYPES,
   ALLOWED_IMAGE_HOSTS,
   REDVELVET_AREAS_URL,
