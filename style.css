@@ -202,9 +202,24 @@ body {
   width: 80px;
 }
 
-#redvelvet-detail-filters input[id="bustInput"] { width: 110px; }
-
 #redvelvet-detail-filters input:focus { border-color: #c084fc; }
+
+#redvelvet-detail-filters select {
+  padding: 7px 6px;
+  border-radius: 8px;
+  border: 1px solid #4a4a6a;
+  background: #16213e;
+  color: #e0e0e0;
+  font-size: 0.9rem;
+  outline: none;
+  cursor: pointer;
+}
+
+#redvelvet-detail-filters select:focus { border-color: #c084fc; }
+
+#bandSelect { width: 68px; }
+#cupSelect  { width: 62px; }
+#sizeMinSelect, #sizeMaxSelect { width: 84px; }
 
 #filter-chips {
   display: flex;
@@ -690,7 +705,7 @@ body {
 
   #redvelvet-detail-filters { flex-wrap: wrap; }
   #redvelvet-detail-filters input { width: auto; flex: 1; min-width: 70px; }
-  #redvelvet-detail-filters input[id="bustInput"] { width: auto; }
+  #redvelvet-detail-filters select { width: auto; flex: 1; min-width: 60px; }
 
   .search-bar { position: relative; }
   .multi-select-wrap { position: static; }

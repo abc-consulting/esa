@@ -24,5 +24,8 @@ export const dom = {
   redvelvetDetailFilters: document.getElementById('redvelvet-detail-filters'),
   ageMinInput: document.getElementById('ageMinInput'),
   ageMaxInput: document.getElementById('ageMaxInput'),
-  bustInput: document.getElementById('bustInput'),
+  bandSelect:    document.getElementById('bandSelect'),
+  cupSelect:     document.getElementById('cupSelect'),
+  sizeMinSelect: document.getElementById('sizeMinSelect'),
+  sizeMaxSelect: document.getElementById('sizeMaxSelect'),
 };
