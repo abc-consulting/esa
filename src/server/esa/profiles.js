@@ -43,7 +43,10 @@ function parseEsaProfileCards(html) {
         ? `${ESA_BASE_URL}${rawThumb}`
         : rawThumb;
 
-    cards.push({ provider: 'esa', uid, name, area, profileUrl, thumbUrl });
+    const phoneMatch = block.match(/href="tel:([^"]+)"/i);
+    const phone = phoneMatch ? phoneMatch[1].trim() : '';
+
+    cards.push({ provider: 'esa', uid, name, area, profileUrl, thumbUrl, phone });
   }
 
   return cards;

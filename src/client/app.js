@@ -850,18 +850,27 @@ function cancelLinkPickMode() {
   renderProfileCards();
 }
 
+function enrichWithPhone(profile) {
+  if (profile.phone) return profile;
+  const cached = detailCache.get(String(profile.uid));
+  return cached?.phone ? { ...profile, phone: cached.phone } : profile;
+}
+
 function confirmLink(profileA, profileB) {
-  const groupA = findGroupForProfile(profileA.provider, profileA.uid);
-  const groupB = findGroupForProfile(profileB.provider, profileB.uid);
+  const a = enrichWithPhone(profileA);
+  const b = enrichWithPhone(profileB);
+
+  const groupA = findGroupForProfile(a.provider, a.uid);
+  const groupB = findGroupForProfile(b.provider, b.uid);
 
   if (groupA && groupB) {
     if (groupA.id !== groupB.id) mergeGroups(groupA.id, groupB.id);
   } else if (groupA) {
-    addToGroup(groupA.id, profileB);
+    addToGroup(groupA.id, b);
   } else if (groupB) {
-    addToGroup(groupB.id, profileA);
+    addToGroup(groupB.id, a);
   } else {
-    createGroup(profileA, profileB);
+    createGroup(a, b);
   }
 
   cancelLinkPickMode();

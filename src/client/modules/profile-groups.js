@@ -80,6 +80,7 @@ function createGroup(profileA, profileB) {
     area: p.area,
     thumbUrl: p.thumbUrl || '',
     profileUrl: p.profileUrl || '',
+    phone: p.phone || '',
   });
   groups.push({ id, members: [toMember(profileA), toMember(profileB)], createdAt: Date.now() });
   saveGroups(groups);
@@ -99,6 +100,7 @@ function addToGroup(groupId, profile) {
     area: profile.area,
     thumbUrl: profile.thumbUrl || '',
     profileUrl: profile.profileUrl || '',
+    phone: profile.phone || '',
   });
   saveGroups(groups);
 }
