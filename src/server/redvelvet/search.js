@@ -6,6 +6,7 @@ const { getRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityB
 const { fetchRedvelvetProfilesWithPostback } = require('./profiles');
 const { resolveRedvelvetTagUrl } = require('./tags');
 const { fetchProfileAgeAndBust } = require('./profile-details');
+const { groupProfilesByPhone } = require('../utils/groups');
 
 const tagProfileCache = new Map(); // tag label → { profiles, fetchedAt }
 
@@ -81,7 +82,7 @@ async function handleRedvelvetSearch(req, res) {
 
   const hasIncludes = includedAreas.length > 0 || includedTags.length > 0;
   if (!hasIncludes) {
-    send(res, 200, JSON.stringify({ count: 0, profiles: [] }), { 'Content-Type': 'application/json; charset=utf-8' });
+    send(res, 200, JSON.stringify({ count: 0, groups: [] }), { 'Content-Type': 'application/json; charset=utf-8' });
     return;
   }
 
@@ -187,7 +188,8 @@ async function handleRedvelvetSearch(req, res) {
       });
     }
 
-    send(res, 200, JSON.stringify({ count: profiles.length, profiles }), {
+    const groups = groupProfilesByPhone(profiles);
+    send(res, 200, JSON.stringify({ count: profiles.length, groups }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });
