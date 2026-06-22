@@ -6,48 +6,6 @@ const { decodeHtmlEntities } = require('../utils/html');
 
 const detailCache = new Map(); // uid → { data, fetchedAt }
 
-const SIZE_FALLBACKS = ['large', 'medium', 'small', 'thumb_blur'];
-const PROBE_TIMEOUT_MS = 5000;
-const PROBE_CONCURRENCY = 10;
-
-function setSize(url, size) {
-  return url.replace(/size=[^&]+/i, `size=${size}`);
-}
-
-async function probeSize(url) {
-  for (const size of SIZE_FALLBACKS) {
-    const candidate = setSize(url, size);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-    try {
-      const res = await fetch(candidate, { method: 'HEAD', signal: controller.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } });
-      if (res.ok) return candidate;
-    } catch {
-      // try next size
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  return url; // return original if all fail — client can handle
-}
-
-async function resolveImageSizes(urls) {
-  const sizeable = urls.map(u => /size=[^&]+/i.test(u));
-  const results = new Array(urls.length);
-
-  let idx = 0;
-  async function next() {
-    while (idx < urls.length) {
-      const i = idx++;
-      results[i] = sizeable[i] ? await probeSize(urls[i]) : urls[i];
-    }
-  }
-
-  const workers = Array.from({ length: Math.min(PROBE_CONCURRENCY, urls.length) }, next);
-  await Promise.all(workers);
-  return results;
-}
-
 function parseEsaProfileDetails(uid, html) {
   // Name from <h2>
   const h2Match = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
@@ -145,20 +103,7 @@ async function fetchEsaProfileDetails(uid) {
 
   const url = `${ESA_BASE_URL}/escorts/viewEscort.php?uid=${encodeURIComponent(uid)}`;
   const html = await fetchText(url);
-  const parsed = parseEsaProfileDetails(uid, html);
-
-  const [resolvedImages, resolvedThumb] = await Promise.all([
-    resolveImageSizes(parsed.images),
-    parsed.profile.thumbUrl && /size=[^&]+/i.test(parsed.profile.thumbUrl)
-      ? probeSize(parsed.profile.thumbUrl)
-      : Promise.resolve(parsed.profile.thumbUrl),
-  ]);
-
-  const data = {
-    ...parsed,
-    profile: { ...parsed.profile, thumbUrl: resolvedThumb },
-    images: resolvedImages,
-  };
+  const data = parseEsaProfileDetails(uid, html);
 
   detailCache.set(uid, { data, fetchedAt: Date.now() });
   return data;
