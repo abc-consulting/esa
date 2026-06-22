@@ -4,6 +4,7 @@ const { fetchText, send } = require('../utils/http');
 const { normalizeAreaName } = require('../utils/normalize');
 const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS } = require('../constants');
 const { URL } = require('url');
+const { groupProfilesByPhone } = require('../utils/groups');
 
 let areaMapCache = null;
 let areaMapCacheTime = 0;
@@ -277,11 +278,12 @@ async function handleRedvelvetAreaProfiles(req, res, serverBase) {
 
   try {
     const result = await getRedvelvetAreaProfiles(rawName, cityBucket);
+    const groups = groupProfilesByPhone(result.profiles);
     send(res, 200, JSON.stringify({
       area: normalizeAreaName(rawName),
       areaUrl: result.areaUrl,
       count: result.profiles.length,
-      profiles: result.profiles,
+      groups,
     }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'public, max-age=300',

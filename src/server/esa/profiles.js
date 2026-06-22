@@ -2,6 +2,7 @@
 
 const { ESA_BASE_URL, ESA_GALLERY_URL } = require('../constants');
 const { fetchText, send } = require('../utils/http');
+const { groupProfilesByPhone } = require('../utils/groups');
 
 const MAX_PAGES = 50;
 
@@ -91,7 +92,8 @@ async function handleEsaProfilesByNickname(req, res) {
   try {
     const url = `${ESA_GALLERY_URL}?sp%5Bnickname%5D=${encodeURIComponent(nickname)}&sp[city]=Cape+Town`;
     const profiles = await fetchEsaProfiles(url);
-    send(res, 200, JSON.stringify({ count: profiles.length, profiles }), {
+    const groups = groupProfilesByPhone(profiles);
+    send(res, 200, JSON.stringify({ count: profiles.length, groups }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });
@@ -111,7 +113,8 @@ async function handleEsaProfilesByArea(req, res) {
   try {
     const url = `${ESA_GALLERY_URL}?sp[city]=Cape+Town&sp[area]=${encodeURIComponent(area)}`;
     const profiles = await fetchEsaProfiles(url);
-    send(res, 200, JSON.stringify({ count: profiles.length, profiles }), {
+    const groups = groupProfilesByPhone(profiles);
+    send(res, 200, JSON.stringify({ count: profiles.length, groups }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });

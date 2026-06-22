@@ -745,7 +745,7 @@ async function runRedvelvetSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = data.profiles || [];
+    profileLinks = (data.groups || []).flatMap(g => g.profiles || []);
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
@@ -785,7 +785,7 @@ async function runEsaSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = data.profiles || [];
+    profileLinks = (data.groups || []).flatMap(g => g.profiles || []);
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
