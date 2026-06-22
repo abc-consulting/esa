@@ -692,7 +692,16 @@ body {
   #redvelvet-detail-filters input { width: auto; flex: 1; min-width: 70px; }
   #redvelvet-detail-filters input[id="bustInput"] { width: auto; }
 
-  .multi-select-panel { min-width: 0; width: 90vw; max-width: 320px; }
+  .search-bar { position: relative; }
+  .multi-select-wrap { position: static; }
+  .multi-select-panel {
+    top: calc(100% + 6px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+    min-width: 0;
+  }
 
   #content-layout { padding: 0 8px; }
   #favorites-details { padding: 10px 8px; }
