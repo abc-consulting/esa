@@ -35,14 +35,18 @@ async function handleRedvelvetNicknameSearch(req, res, serverBase) {
 
     let profiles = [];
 
+    console.log(`[RV DEBUG] nickname-search: GET ${SEARCH_URL}`);
     const formHtml = await fetchText(SEARCH_URL);
+    console.log(`[RV DEBUG] nickname-search: form HTML length=${formHtml.length}. Snippet: ${formHtml.slice(0, 200).replace(/\s+/g, ' ')}`);
     const fields = extractHiddenFields(formHtml);
+    console.log(`[RV DEBUG] nickname-search: extracted hidden fields: ${Object.keys(fields).join(', ')}`);
 
     const body = new URLSearchParams(fields);
     body.set('ctl00$ContentPlaceHolder1$txtSearch', nickname);
     body.set('ctl00$ContentPlaceHolder1$Button1', 'Search');
     body.set('hiddenInputToUpdateATBuffer_CommonToolkitScripts', '0');
 
+    console.log(`[RV DEBUG] nickname-search: POST ${SEARCH_URL} nickname="${nickname}"`);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -56,10 +60,14 @@ async function handleRedvelvetNicknameSearch(req, res, serverBase) {
         signal: controller.signal,
       });
 
+      console.log(`[RV DEBUG] nickname-search: POST response HTTP ${response.status}, url=${response.url}`);
       if (response.ok) {
         const resultHtml = await response.text();
+        console.log(`[RV DEBUG] nickname-search: result HTML length=${resultHtml.length}. Snippet: ${resultHtml.slice(0, 300).replace(/\s+/g, ' ')}`);
         const raw = parseRedvelvetAreaProfiles(resultHtml);
+        console.log(`[RV DEBUG] nickname-search: parsed ${raw.length} profiles (unfiltered)`);
         profiles = filterProfilesByCityBucket(raw, areaSet, areaMap);
+        console.log(`[RV DEBUG] nickname-search: ${profiles.length} profiles after cityBucket filter`);
       }
     } finally {
       clearTimeout(timer);
