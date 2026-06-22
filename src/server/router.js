@@ -16,6 +16,10 @@ const { handleRedvelvetProfileLookup, handleRedvelvetTagProfiles } = require('./
 const { handleRedvelvetProfileDetails } = require('./redvelvet/profile-details');
 const { handleRedvelvetSearch } = require('./redvelvet/search');
 const { getSessionCookie } = require('./redvelvet/auth');
+const { handleEsaProfilesByNickname, handleEsaProfilesByArea } = require('./esa/profiles');
+const { handleEsaProfileDetails } = require('./esa/profile-details');
+const { handleEsaAreas, buildEsaAreaHashMap } = require('./esa/areas');
+const { handleEsaSearch } = require('./esa/search');
 
 const server = http.createServer(async (req, res) => {
   const serverBase = `http://${req.headers.host || `localhost:${PORT}`}`;
@@ -81,6 +85,31 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.url && req.url.startsWith('/esa-profile-details?')) {
+    await handleEsaProfileDetails(req, res);
+    return;
+  }
+
+  if (req.url === '/esa-areas') {
+    await handleEsaAreas(req, res);
+    return;
+  }
+
+  if (req.url && req.url.startsWith('/esa-profiles?')) {
+    const urlObj = new URL(req.url, 'http://localhost');
+    if (urlObj.searchParams.has('nickname')) {
+      await handleEsaProfilesByNickname(req, res);
+    } else {
+      await handleEsaProfilesByArea(req, res);
+    }
+    return;
+  }
+
+  if (req.url === '/esa-search' && req.method === 'POST') {
+    await handleEsaSearch(req, res);
+    return;
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     send(res, 405, 'Method not allowed');
     return;
@@ -93,6 +122,7 @@ server.listen(PORT, () => {
   console.log(`ESA app server running at http://localhost:${PORT}`);
   buildRedvelvetAreaHashMap().catch(err => console.error('Area hashmap warmup failed:', err));
   buildRedvelvetTagHashMap().catch(err => console.error('Tag hashmap warmup failed:', err));
+  buildEsaAreaHashMap().catch(err => console.error('[ESA] Area hashmap warmup failed:', err));
   if (!process.env.RV_EMAIL || !process.env.RV_PASSWORD) {
     console.warn('[RV Auth] RV_EMAIL / RV_PASSWORD not set — fetching without login');
   } else {

@@ -9,20 +9,14 @@ import {
 } from './modules/storage.js';
 import {
   extractUidFromUrl,
-  extractSubId,
-  normalizeGalleryImageUrl,
-  getProfileUrlByProvider,
-  extractPicNum,
 } from './modules/url-utils.js';
 import {
   fetchEsaImagesFromProfile,
   fetchEsaProfilesByNickname,
-  fetchEsaProfilesByArea,
 } from './modules/providers/esa-service.js';
 import {
   fetchRedvelvetProfilesByNickname as fetchRedvelvetProfilesByNicknameService,
   fetchRedvelvetProfilesByArea as fetchRedvelvetProfilesByAreaService,
-  fetchRedvelvetImagesFromProfile as fetchRedvelvetImagesFromProfileService,
 } from './modules/providers/redvelvet-service.js';
 import { debounce } from './modules/common-utils.js';
 import {
@@ -63,11 +57,9 @@ const {
 
 // ─── STATE ────────────────────────────────────────────────────────────────
 
-let subIdArray        = [];
 let profileLinks      = [];
 let galleryImageUrls  = [];
-let subIdPicCounts    = new Map();
-let failedImagesBySubId = new Map();
+let failedImages      = new Set();
 let activeProvider    = 'esa';
 let filterKeyword     = '';
 let activeTags   = new Set();
@@ -245,7 +237,11 @@ async function restoreFilters() {
   if (!hasFilters) return false;
 
   updateFilterChips();
-  runRedvelvetSearch();
+  if (activeProvider === 'redvelvet') {
+    runRedvelvetSearch();
+  } else {
+    runEsaSearch();
+  }
   return true;
 }
 
@@ -299,7 +295,7 @@ function clearProfiles() {
 
 function clearImages() {
   imagesContainer.innerHTML = '';
-  failedImagesBySubId = new Map();
+  failedImages = new Set();
   renderFailedImagesPanel();
   document.getElementById('download-all-btn')?.remove();
 }
@@ -335,10 +331,7 @@ function renderFailedImagesPanel() {
   const container = ensureFailedImagesContainer();
   if (!container) return;
 
-  const totalFailed = Array.from(failedImagesBySubId.values())
-    .reduce((sum, urls) => sum + urls.size, 0);
-
-  if (totalFailed === 0) {
+  if (failedImages.size === 0) {
     container.innerHTML = '';
     return;
   }
@@ -347,47 +340,21 @@ function renderFailedImagesPanel() {
   details.className = 'failed-images-details';
 
   const summary = document.createElement('summary');
-  summary.textContent = `Failed images: ${totalFailed}`;
+  summary.textContent = `Failed images: ${failedImages.size}`;
   details.appendChild(summary);
 
-  const groups = Array.from(failedImagesBySubId.entries());
-  groups.sort((a, b) => {
-    if (a[0] === 'unknown') return 1;
-    if (b[0] === 'unknown') return -1;
-    return Number(a[0]) - Number(b[0]);
+  const list = document.createElement('ul');
+  Array.from(failedImages).forEach(url => {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = url;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = url.split('?')[0].split('/').pop() || url;
+    item.appendChild(link);
+    list.appendChild(item);
   });
-
-  groups.forEach(([subId, urls]) => {
-    const groupWrap = document.createElement('details');
-    groupWrap.className = 'failed-images-group';
-
-    const groupTitle = document.createElement('summary');
-    const label = subId === 'unknown' ? 'Unknown subId' : `subId ${subId}`;
-    groupTitle.textContent = `${label} (${urls.size})`;
-    groupWrap.appendChild(groupTitle);
-
-    const list = document.createElement('ul');
-    const sortedUrls = Array.from(urls).sort((a, b) => {
-      const aNum = extractPicNum(a) ?? Number.MAX_SAFE_INTEGER;
-      const bNum = extractPicNum(b) ?? Number.MAX_SAFE_INTEGER;
-      return aNum - bNum;
-    });
-
-    sortedUrls.forEach(url => {
-      const item = document.createElement('li');
-      const link = document.createElement('a');
-      link.href = url;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-      const picNum = extractPicNum(url);
-      link.textContent = picNum ? `picnum ${picNum}` : 'picnum unknown';
-      item.appendChild(link);
-      list.appendChild(item);
-    });
-
-    groupWrap.appendChild(list);
-    details.appendChild(groupWrap);
-  });
+  details.appendChild(list);
 
   container.innerHTML = '';
   container.appendChild(details);
@@ -395,11 +362,7 @@ function renderFailedImagesPanel() {
 
 function recordFailedImage(url) {
   if (!url) return;
-  const subId = extractSubId(url) || 'unknown';
-  if (!failedImagesBySubId.has(subId)) {
-    failedImagesBySubId.set(subId, new Set());
-  }
-  failedImagesBySubId.get(subId).add(url);
+  failedImages.add(url);
   renderFailedImagesPanel();
 }
 
@@ -416,7 +379,6 @@ async function doSearch() {
   clearProfiles();
   clearImages();
   clearProfileDetails();
-  subIdArray = [];
   document.getElementById('selected-output').style.display = 'none';
   setStatus('<span class="spinner"></span>Fetching results…');
   searchBtn.disabled = true;
@@ -425,12 +387,12 @@ async function doSearch() {
 
   if (activeProvider === 'redvelvet') {
     if (/^https?:\/\/.*\/escorts\/escorts_details\//i.test(query)) {
-      await fetchRedvelvetImagesFromProfile(query);
+      await fetchImagesFromProfile({ provider: 'redvelvet', profileUrl: query });
       return;
     }
 
     if (/^\d+$/.test(query)) {
-      await fetchImagesFromProfile(query);
+      await fetchImagesFromProfile({ provider: 'redvelvet', uid: query });
     } else {
       await fetchRedvelvetProfilesByNickname(query);
     }
@@ -438,7 +400,7 @@ async function doSearch() {
   }
 
   if (/^\d+$/.test(query)) {
-    await fetchImagesFromProfile(query);
+    await fetchImagesFromProfile({ provider: 'esa', uid: query });
   } else {
     await fetchProfilesByNickname(query);
   }
@@ -460,23 +422,70 @@ async function doAreaSearch() {
     return;
   }
 
-  persistLastSearch('area', area);
-  fetchProfilesByArea(area);
+  if (activeProvider === 'esa') {
+    if (!activeAreas.has(area)) {
+      activeAreas.add(area);
+      updateFilterChips();
+    }
+    document.getElementById('areaInput').value = '';
+    persistLastSearch('area', area);
+    runEsaSearch();
+    return;
+  }
 }
 
 // ─── PROFILE FETCHING ─────────────────────────────────────────────────────
 
-async function fetchImagesFromProfile(uid) {
+async function fetchImagesFromProfile(item) {
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  let data;
+
   if (activeProvider === 'redvelvet') {
-    await fetchRedvelvetImagesFromProfile(uid);
-    return;
+    const uid = /^\d+$/.test(String(item.uid || ''))
+      ? String(item.uid)
+      : extractUidFromUrl(String(item.profileUrl || ''));
+    if (!uid) { setStatus('Could not determine profile ID.', true); return; }
+
+    setStatus('<span class="spinner"></span>Fetching profile…');
+    searchBtn.disabled = true;
+    try {
+      const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(uid)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      data = await res.json();
+      if (data.error) throw new Error(data.error);
+    } catch (err) {
+      setStatus(`Error: ${err.message}`, true);
+      searchBtn.disabled = false;
+      return;
+    }
+    searchBtn.disabled = false;
+
+    renderProfileDetails(data.profile, {
+      onAreaClick: p => fetchRedvelvetProfilesByArea(p.areaUrl || p.area),
+      onTagClick: tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); },
+    });
+  } else {
+    data = await fetchEsaImagesFromProfile(item.uid, { setStatus, searchBtn });
+    if (!data) return;
+
+    renderProfileDetails(data.profile, {
+      onAreaClick: p => {
+        activeAreas.clear();
+        excludedAreas.clear();
+        activeAreas.add(p.area);
+        updateFilterChips();
+        runEsaSearch();
+      },
+      onTagClick: null,
+    });
   }
 
-  const esaResult = await fetchEsaImagesFromProfile(uid, { setStatus, searchBtn });
-  if (!esaResult) return;
-
-  renderProfileDetails(esaResult.profile);
-  processImages(esaResult.images, esaResult.galleryUrls, esaResult.subIds);
+  galleryImageUrls = data.images || [];
+  const videos     = data.videos || [];
+  const totalCount = galleryImageUrls.length + videos.length;
+  setStatus(`Found ${totalCount} media item${totalCount === 1 ? '' : 's'}.`);
+  profileDetailsContainer.scrollIntoView({ behavior: 'smooth' });
+  setTimeout(() => renderImages(videos), activeProvider === 'redvelvet' ? 300 : 500);
 }
 
 async function fetchProfilesByNickname(nickname) {
@@ -485,19 +494,6 @@ async function fetchProfilesByNickname(nickname) {
   renderProfileCards();
 }
 
-async function fetchProfilesByArea(area) {
-  clearImages();
-  clearProfiles();
-  clearProfileDetails();
-
-  const header = document.createElement('h2');
-  header.className   = 'area-name';
-  header.textContent = area;
-  profilesContainer.appendChild(header);
-
-  profileLinks = await fetchEsaProfilesByArea(area, { setStatus, searchBtn });
-  renderProfileCards();
-}
 
 async function fetchRedvelvetProfilesByNickname(nickname) {
   clearImages();
@@ -646,6 +642,46 @@ async function runRedvelvetSearch() {
   renderProfileCards();
 }
 
+async function runEsaSearch() {
+  exitProfileView();
+  clearImages();
+  clearProfileDetails();
+  clearProfilesContainer();
+
+  const hasIncludes = activeAreas.size > 0;
+  if (!hasIncludes) {
+    persistFilters();
+    profileLinks = [];
+    renderProfileCards();
+    setStatus('');
+    return;
+  }
+
+  persistFilters();
+  const body = {
+    areas: { included: [...activeAreas], excluded: [...excludedAreas] },
+  };
+
+  setStatus('<span class="spinner"></span>Searching…');
+  searchBtn.disabled = true;
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  try {
+    const res = await fetch(`${relayBase}/esa-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    profileLinks = data.profiles || [];
+    setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
+  } catch (err) {
+    setStatus(`Error: ${err.message}`, true);
+  }
+  searchBtn.disabled = false;
+  renderProfileCards();
+}
+
 function toggleRedvelvetTag(tag) {
   if (activeTags.has(tag)) {
     activeTags.delete(tag);
@@ -688,57 +724,24 @@ function excludeRedvelvetArea(area) {
   updateFilterChips();
 }
 
-async function fetchRedvelvetImagesFromProfile(uidOrId) {
-  // Extract numeric UID from URL or use as-is if already numeric
-  const uid = /^\d+$/.test(String(uidOrId)) ? String(uidOrId) : extractUidFromUrl(String(uidOrId));
-  if (!uid) {
-    setStatus('Could not determine profile ID.', true);
-    return;
-  }
-
-  setStatus('<span class="spinner"></span>Fetching profile…');
-  searchBtn.disabled = true;
-
-  let data;
-  try {
-    const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
-    const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(uid)}`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    data = await res.json();
-    if (data.error) throw new Error(data.error);
-  } catch (err) {
-    setStatus(`Error: ${err.message}`, true);
-    searchBtn.disabled = false;
-    return;
-  }
-
-  searchBtn.disabled = false;
-  renderProfileDetails(data.profile);
-
-  subIdArray       = [];
-  subIdPicCounts   = new Map();
-  galleryImageUrls = data.directImages || [];
-
-  const totalCount = galleryImageUrls.length + (data.videos?.length || 0);
-  setStatus(`Found ${totalCount} RedVelvet media item${totalCount === 1 ? '' : 's'}.`);
-  profileDetailsContainer.scrollIntoView({ behavior: 'smooth' });
-  setTimeout(() => renderImages(data.videos || []), 300);
-}
 
 // ─── RENDERING ────────────────────────────────────────────────────────────
 
+function cardClickHandler(item) {
+  fetchImagesFromProfile(item);
+}
+
 const CARD_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220"><rect width="100%" height="100%" fill="%23f3f3f3"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23777" font-size="16">No Image</text></svg>';
 
-function buildProfileCard(item, index, onClickExtra) {
+function buildProfileCard(item, index, { onClickExtra, onProfileClick } = {}) {
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
   const toCardImageUrl = (url) => (url && /^https?:\/\//i.test(url)) ? `${relayBase}/image?url=${encodeURIComponent(url)}` : url;
-  const buildFallback = (card) => ((card?.provider || 'esa') === 'redvelvet' && card?.uid) ? 'https://redvelvet.co.za/Assets/images/noimage.png' : '';
+  const buildFallback = (card) => (card?.provider === 'redvelvet' && card?.uid) ? 'https://redvelvet.co.za/Assets/images/noimage.png' : '';
 
   const uid      = item.uid;
   const namePart = item.name || `UID ${uid}`;
   const areaPart = item.area || '';
   const imgSrc   = toCardImageUrl(item.thumbUrl || buildFallback(item)) || CARD_PLACEHOLDER;
-  const provider = item.provider || 'esa';
 
   const wrapper = document.createElement('div');
   wrapper.className = 'profile-card';
@@ -746,8 +749,7 @@ function buildProfileCard(item, index, onClickExtra) {
   wrapper.title = `Click to load images for uid ${uid}`;
   wrapper.addEventListener('click', () => {
     if (onClickExtra) onClickExtra();
-    if (provider === 'redvelvet') fetchRedvelvetImagesFromProfile(item.profileUrl);
-    else fetchImagesFromProfile(uid);
+    if (onProfileClick) onProfileClick(item);
   });
 
   const img = document.createElement('img');
@@ -783,7 +785,10 @@ function syncMobileDrawer(filteredProfiles) {
   drawerList.innerHTML = '';
   filteredProfiles.forEach((item, index) => {
     if (!item.uid) return;
-    drawerList.appendChild(buildProfileCard(item, index, closeProfilesDrawer));
+    drawerList.appendChild(buildProfileCard(item, index, {
+      onClickExtra: closeProfilesDrawer,
+      onProfileClick: cardClickHandler,
+    }));
   });
 }
 
@@ -799,20 +804,21 @@ function closeProfilesDrawer() {
 function renderProfileCards() {
   clearProfilesContainer();
 
+  const kw = filterKeyword.toLowerCase();
   const filteredProfiles = profileLinks
-    .filter(profile => profile.name.includes(filterKeyword) || profile.area.includes(filterKeyword));
+    .filter(profile => profile.name.toLowerCase().includes(kw) || profile.area.toLowerCase().includes(kw));
 
   if (filteredProfiles.length > 0 && filterBar) filterBar.style.display = 'flex';
 
   filteredProfiles.forEach((item, index) => {
     if (!item.uid) return;
-    profilesContainer.appendChild(buildProfileCard(item, index, null));
+    profilesContainer.appendChild(buildProfileCard(item, index, { onProfileClick: cardClickHandler }));
   });
 
   syncMobileDrawer(filteredProfiles);
 }
 
-function renderProfileDetails(profile) {
+function renderProfileDetails(profile, { onAreaClick, onTagClick } = {}) {
   clearProfileDetails();
   contentLayout?.classList.add('has-profile');
 
@@ -852,9 +858,9 @@ function renderProfileDetails(profile) {
   areaBtn.textContent = profile.area;
   areaBtn.title       = 'Browse this area';
   const areaTarget = profile.areaUrl || profile.area;
-  areaBtn.disabled = !areaTarget;
-  if (areaTarget) {
-    areaBtn.addEventListener('click', () => fetchProfilesByArea(areaTarget));
+  areaBtn.disabled = !areaTarget || !onAreaClick;
+  if (areaTarget && onAreaClick) {
+    areaBtn.addEventListener('click', () => onAreaClick(profile));
   }
 
   const favoriteBtn = document.createElement('button');
@@ -894,7 +900,7 @@ function renderProfileDetails(profile) {
     rightCol.appendChild(phone);
   }
 
-  if (profile.tags?.length) {
+  if (profile.tags?.length && onTagClick) {
     const tagsWrap = document.createElement('div');
     tagsWrap.className = 'profile-tags';
     profile.tags.forEach(tag => {
@@ -902,7 +908,7 @@ function renderProfileDetails(profile) {
       chip.className   = 'profile-tag';
       chip.textContent = tag;
       chip.style.cursor = 'pointer';
-      chip.addEventListener('click', () => { toggleRedvelvetTag(tag); runRedvelvetSearch(); });
+      chip.addEventListener('click', () => onTagClick(tag));
       tagsWrap.appendChild(chip);
     });
     rightCol.appendChild(tagsWrap);
@@ -913,7 +919,8 @@ function renderProfileDetails(profile) {
 
   // Show FAB now that has-profile is active
   if (isMobile()) {
-    const filteredProfiles = profileLinks.filter(p => p.name.includes(filterKeyword) || p.area.includes(filterKeyword));
+    const kw = filterKeyword.toLowerCase();
+    const filteredProfiles = profileLinks.filter(p => p.name.toLowerCase().includes(kw) || p.area.toLowerCase().includes(kw));
     syncMobileDrawer(filteredProfiles);
   }
 }
@@ -1025,35 +1032,6 @@ function renderImages(videos = []) {
     slot++;
   });
 
-  let subSlot = galleryImageUrls.length;
-  subIdArray.forEach(id => {
-    const maxPics = Math.max(1, Math.min(subIdPicCounts.get(id) || 6, 30));
-    for (let i = 1; i <= maxPics; i++) {
-      const img = document.createElement('img');
-      const mediumSrc = `https://goldmember.esa.co.za//picserver.php?type=picsets&subid=${id}&picnum=${i}&size=medium`;
-      img.alt       = `subId ${id} pic ${i}`;
-      img.src       = toDisplayImageUrl(mediumSrc);
-      img.className = 'masonry-img';
-      img.style.animationDelay = `${slot * 60}ms`;
-      img.dataset.sourceUrl = mediumSrc;
-      const filename = `${profileName}_${String(subSlot + 1).padStart(3, '0')}.jpg`;
-      img.onerror = function () {
-        const sourceUrl = this.dataset.sourceUrl || '';
-        const smallSource = sourceUrl.replace('size=medium', 'size=small');
-        if (sourceUrl.includes('size=medium')) {
-          this.dataset.sourceUrl = smallSource;
-          this.src = toDisplayImageUrl(smallSource);
-        } else {
-          recordFailedImage(sourceUrl || this.currentSrc || '');
-          this.closest('.masonry-item')?.remove() ?? this.remove();
-        }
-      };
-      imagesContainer.appendChild(wrapImageInItem(img, toRelayImageUrl(mediumSrc), filename));
-      slot++;
-      subSlot++;
-    }
-  });
-
   // Videos (RedVelvet selfie videos from /selfies/up/)
   (videos || []).forEach((url, idx) => {
     const relayUrl = toRelayImageUrl(url);
@@ -1085,71 +1063,6 @@ function renderImages(videos = []) {
   if (slot > 0) renderDownloadAllBtn(relayBase, toRelayImageUrl);
 }
 
-// ─── IMAGE PROCESSING ─────────────────────────────────────────────────────
-
-function processImages(imgs, extraCandidates = [], extraSubIds = []) {
-  const seenSubIds     = new Set();
-  const seenGalleryUrls = new Set();
-  subIdArray       = [];
-  galleryImageUrls = [];
-  subIdPicCounts   = new Map();
-
-  const processCandidate = (candidate) => {
-    const normalized = normalizeGalleryImageUrl(candidate);
-    if (/\/client\/gallery\/srv\.php/i.test(normalized) && !seenGalleryUrls.has(normalized)) {
-      seenGalleryUrls.add(normalized);
-      galleryImageUrls.push(normalized);
-    }
-
-    const id = extractSubId(normalized);
-    if (id && !seenSubIds.has(id)) {
-      seenSubIds.add(id);
-      subIdArray.push(id);
-    }
-
-    if (id) {
-      const picNum = extractPicNum(normalized);
-      if (picNum) {
-        subIdPicCounts.set(id, Math.max(subIdPicCounts.get(id) || 0, picNum));
-      }
-    }
-  };
-
-  imgs.forEach(img => {
-    const srcset = img.getAttribute('srcset') ?? '';
-    const srcsetUrls = srcset
-      .split(',')
-      .map(part => part.trim().split(/\s+/)[0])
-      .filter(Boolean);
-
-    [
-      img.getAttribute('data-original') ?? '',
-      img.getAttribute('src') ?? '',
-      img.getAttribute('data-src') ?? '',
-      ...srcsetUrls,
-    ].forEach(processCandidate);
-  });
-
-  extraCandidates.forEach(processCandidate);
-
-  extraSubIds.forEach(id => {
-    if (id && !seenSubIds.has(id)) {
-      seenSubIds.add(id);
-      subIdArray.push(id);
-    }
-  });
-
-  const directCount    = galleryImageUrls.length;
-  const generatedCount = subIdArray.reduce((sum, id) => {
-    return sum + Math.max(1, Math.min(subIdPicCounts.get(id) || 6, 30));
-  }, 0);
-  const totalCount = directCount + generatedCount;
-  setStatus(`Found ${directCount} direct gallery image${directCount === 1 ? '' : 's'} and ${generatedCount} generated image${generatedCount === 1 ? '' : 's'} (${totalCount} total).`);
-
-  profileDetailsContainer.scrollIntoView({ behavior: 'smooth' });
-  setTimeout(renderImages, 500);
-}
-
 // ─── REDVELVET DROPDOWNS ──────────────────────────────────────────────────
 
 const TAG_GROUPS = { Race: ['Asian', 'Black', 'Coloured', 'Indian', 'White'] };
@@ -1157,7 +1070,9 @@ const TAG_GROUP_MAP = new Map();
 for (const [group, labels] of Object.entries(TAG_GROUPS))
   for (const label of labels) TAG_GROUP_MAP.set(label, group);
 
-let redvelvetDropdownsReady = false;
+// Current search input for the area panel — updated each time the panel is populated.
+let _areaSearchInput = null;
+let _tagSearchInput  = null;
 
 function addPanelSearch(panel, placeholder) {
   const si = document.createElement('input');
@@ -1184,19 +1099,55 @@ function addPanelSearch(panel, placeholder) {
   return si;
 }
 
+// Wire the dropdown button/outside-click listeners exactly once.
+let dropdownButtonsWired = false;
+function initDropdownButtons() {
+  if (dropdownButtonsWired) return;
+  dropdownButtonsWired = true;
+
+  areaDropdownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = areaDropdownPanel.style.display === 'block';
+    areaDropdownPanel.style.display = open ? 'none' : 'block';
+    if (!open && _areaSearchInput) {
+      _areaSearchInput.value = '';
+      areaDropdownPanel.querySelectorAll('.tag-option').forEach(r => r.style.display = '');
+      _areaSearchInput.focus();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!areaDropdownWrap.contains(e.target)) areaDropdownPanel.style.display = 'none';
+  });
+
+  tagDropdownBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = tagDropdownPanel.style.display === 'block';
+    tagDropdownPanel.style.display = open ? 'none' : 'block';
+    if (!open && _tagSearchInput) {
+      _tagSearchInput.value = '';
+      tagDropdownPanel.querySelectorAll('.tag-option, .tag-group-header').forEach(r => r.style.display = '');
+      _tagSearchInput.focus();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (!tagDropdownWrap.contains(e.target)) tagDropdownPanel.style.display = 'none';
+  });
+}
+
+let redvelvetDropdownsReady = false;
+
 async function initRedvelvetDropdowns() {
+  initDropdownButtons();
   if (redvelvetDropdownsReady) return;
   redvelvetDropdownsReady = true;
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
 
-  // Areas multi-select
-  let areaSearchInput;
   try {
     const res = await fetch(`${relayBase}/redvelvet-areas?cityBucket=2`);
     if (res.ok) {
       const data = await res.json();
       areaDropdownPanel.innerHTML = '';
-      areaSearchInput = addPanelSearch(areaDropdownPanel, 'Search areas…');
+      _areaSearchInput = addPanelSearch(areaDropdownPanel, 'Search areas…');
       (data.areas || []).forEach(area => {
         const row = document.createElement('div');
         row.className = 'tag-option';
@@ -1215,33 +1166,13 @@ async function initRedvelvetDropdowns() {
     }
   } catch { /* silent */ }
 
-  areaDropdownBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = areaDropdownPanel.style.display === 'block';
-    areaDropdownPanel.style.display = open ? 'none' : 'block';
-    if (!open && areaSearchInput) {
-      areaSearchInput.value = '';
-      areaDropdownPanel.querySelectorAll('.tag-option').forEach(r => r.style.display = '');
-      areaSearchInput.focus();
-    }
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!areaDropdownWrap.contains(e.target)) {
-      areaDropdownPanel.style.display = 'none';
-    }
-  });
-
-  // Tags multi-select
-  let tagSearchInput;
   try {
     const res = await fetch(`${relayBase}/redvelvet-tags?`);
     if (res.ok) {
       const data = await res.json();
       tagDropdownPanel.innerHTML = '';
-      tagSearchInput = addPanelSearch(tagDropdownPanel, 'Search tags…');
+      _tagSearchInput = addPanelSearch(tagDropdownPanel, 'Search tags…');
 
-      // Sort: grouped tags first (in group definition order), then rest alphabetically
       const groupOrder = Object.values(TAG_GROUPS).flat();
       const sorted = [...(data.tags || [])].sort((a, b) => {
         const ai = groupOrder.indexOf(a.label);
@@ -1279,23 +1210,6 @@ async function initRedvelvetDropdowns() {
       });
     }
   } catch { /* silent */ }
-
-  tagDropdownBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const open = tagDropdownPanel.style.display === 'block';
-    tagDropdownPanel.style.display = open ? 'none' : 'block';
-    if (!open && tagSearchInput) {
-      tagSearchInput.value = '';
-      tagDropdownPanel.querySelectorAll('.tag-option, .tag-group-header').forEach(r => r.style.display = '');
-      tagSearchInput.focus();
-    }
-  });
-
-  document.addEventListener('click', (e) => {
-    if (!tagDropdownWrap.contains(e.target)) {
-      tagDropdownPanel.style.display = 'none';
-    }
-  });
 }
 
 let sizeDropdownsReady = false;
@@ -1365,12 +1279,54 @@ function showRedvelvetDropdowns() {
   dom.areaBtn.style.display = 'none';
 }
 
+function showEsaDropdowns() {
+  if (areaDropdownWrap) areaDropdownWrap.style.display = '';
+  if (tagDropdownWrap) tagDropdownWrap.style.display = 'none';
+  if (redvelvetDetailFilters) redvelvetDetailFilters.style.display = 'none';
+  document.getElementById('areaInput').style.display = 'none';
+  dom.areaBtn.style.display = 'none';
+}
+
 function hideRedvelvetDropdowns() {
   if (areaDropdownWrap) areaDropdownWrap.style.display = 'none';
   if (tagDropdownWrap) tagDropdownWrap.style.display = 'none';
   if (redvelvetDetailFilters) redvelvetDetailFilters.style.display = 'none';
   document.getElementById('areaInput').style.display = '';
   dom.areaBtn.style.display = '';
+}
+
+let esaDropdownsReady = false;
+
+async function initEsaDropdowns() {
+  initDropdownButtons();
+  if (esaDropdownsReady) return;
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+
+  try {
+    const res = await fetch(`${relayBase}/esa-areas`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.areas?.length) return;
+
+    areaDropdownPanel.innerHTML = '';
+    _areaSearchInput = addPanelSearch(areaDropdownPanel, 'Search areas…');
+    data.areas.forEach(area => {
+      const row = document.createElement('div');
+      row.className = 'tag-option';
+      row.dataset.value = area;
+      row.dataset.state = 'neutral';
+      const box = document.createElement('span');
+      box.className = 'tag-checkbox';
+      const label = document.createElement('span');
+      label.textContent = area;
+      row.append(box, label);
+      let clickTimer;
+      row.addEventListener('click', () => { clearTimeout(clickTimer); clickTimer = setTimeout(() => { toggleRedvelvetArea(area); runEsaSearch(); }, 220); });
+      row.addEventListener('dblclick', () => { clearTimeout(clickTimer); excludeRedvelvetArea(area); runEsaSearch(); });
+      areaDropdownPanel.appendChild(row);
+    });
+    esaDropdownsReady = true;
+  } catch { /* silent */ }
 }
 
 // ─── EVENT WIRING ─────────────────────────────────────────────────────────
@@ -1518,6 +1474,12 @@ if (siteSelect) {
       const didFilter = await restoreFilters();
       if (!didFilter) restoreLastSearch();
     });
+  } else {
+    showEsaDropdowns();
+    initEsaDropdowns().then(async () => {
+      const didFilter = await restoreFilters();
+      if (!didFilter) restoreLastSearch();
+    });
   }
   siteSelect.addEventListener('change', () => {
     saveSelectedProvider(getCurrentProvider());
@@ -1535,8 +1497,11 @@ if (siteSelect) {
         if (!didFilter) restoreLastSearch();
       });
     } else {
-      hideRedvelvetDropdowns();
-      restoreLastSearch();
+      showEsaDropdowns();
+      initEsaDropdowns().then(async () => {
+        const didFilter = await restoreFilters();
+        if (!didFilter) restoreLastSearch();
+      });
     }
   });
 }
@@ -1547,13 +1512,7 @@ initFavorites({
   persistLastSearch,
   siteSelect: dom.siteSelect,
   onLoadProfile: (provider, favorite) => {
-    if (provider === 'redvelvet') {
-      fetchRedvelvetImagesFromProfile(
-        favorite.profileUrl || getProfileUrlByProvider('redvelvet', favorite.uid),
-      );
-    } else {
-      fetchImagesFromProfile(favorite.uid);
-    }
+    fetchImagesFromProfile(favorite);
   },
 });
 

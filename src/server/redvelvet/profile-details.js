@@ -242,7 +242,7 @@ async function fetchRedvelvetProfileDetails(profileUrl) {
     if (!seenImages.has(url)) { seenImages.add(url); allImages.push(url); }
   }
 
-  const result = { profile, directImages: allImages, videos: videosFromPage };
+  const result = { profile, images: allImages, videos: videosFromPage };
   if (uid) detailCache.set(uid, { data: result, fetchedAt: Date.now() });
   return result;
 }

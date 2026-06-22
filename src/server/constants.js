@@ -34,6 +34,8 @@ const RACIAL_TAGS = new Set(['Asian', 'Black', 'Coloured', 'Indian', 'White']);
 
 const REDVELVET_AREAS_URL = 'https://redvelvet.co.za/escorts/escorts_in_area';
 const REDVELVET_TAGS_URL = 'https://redvelvet.co.za/escorts/fetish_escorts';
+const ESA_BASE_URL = 'https://www.esa.co.za';
+const ESA_GALLERY_URL = 'https://www.esa.co.za/gallery.php';
 const CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 const AREA_MAP_CACHE_TTL_MS = CACHE_TTL_MS;
 
@@ -46,6 +48,8 @@ module.exports = {
   ALLOWED_IMAGE_HOSTS,
   REDVELVET_AREAS_URL,
   REDVELVET_TAGS_URL,
+  ESA_BASE_URL,
+  ESA_GALLERY_URL,
   CACHE_TTL_MS,
   AREA_MAP_CACHE_TTL_MS,
   RACIAL_TAGS,
