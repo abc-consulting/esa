@@ -710,6 +710,42 @@ body {
   text-decoration: underline;
 }
 
+.profile-phone-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.phone-action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  text-decoration: none;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.call-btn {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.1);
+}
+
+.call-btn:hover {
+  background: rgba(192, 132, 252, 0.25);
+}
+
+.whatsapp-btn {
+  color: #25d366;
+  background: rgba(37, 211, 102, 0.1);
+}
+
+.whatsapp-btn:hover {
+  background: rgba(37, 211, 102, 0.25);
+}
+
 .profile-tags {
   display: flex;
   flex-wrap: wrap;
