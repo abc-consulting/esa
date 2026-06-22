@@ -129,13 +129,16 @@ body {
   color: #e0e0e0;
   cursor: pointer;
   user-select: none;
+  text-transform: capitalize;
 }
 
 .tag-option:hover { background: #1a2a4a; }
 
 .tag-option input[type="checkbox"] {
   accent-color: #c084fc;
+  flex: 0 0 14px;
   width: 14px;
+  min-width: 14px;
   height: 14px;
   cursor: pointer;
 }
