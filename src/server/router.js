@@ -20,6 +20,8 @@ const { handleEsaProfilesByNickname, handleEsaProfilesByArea } = require('./esa/
 const { handleEsaProfileDetails } = require('./esa/profile-details');
 const { handleEsaAreas, buildEsaAreaHashMap } = require('./esa/areas');
 const { handleEsaSearch } = require('./esa/search');
+const { handleGetProfileGroups, handleSaveProfileGroups } = require('./profile-groups');
+const { handleGetFavorites, handleSaveFavorites } = require('./favorites');
 
 const server = http.createServer(async (req, res) => {
   const serverBase = `http://${req.headers.host || `localhost:${PORT}`}`;
@@ -108,6 +110,16 @@ const server = http.createServer(async (req, res) => {
   if (req.url === '/esa-search' && req.method === 'POST') {
     await handleEsaSearch(req, res);
     return;
+  }
+
+  if (req.url === '/profile-groups') {
+    if (req.method === 'GET') { handleGetProfileGroups(req, res); return; }
+    if (req.method === 'POST') { await handleSaveProfileGroups(req, res); return; }
+  }
+
+  if (req.url === '/favorites') {
+    if (req.method === 'GET') { handleGetFavorites(req, res); return; }
+    if (req.method === 'POST') { await handleSaveFavorites(req, res); return; }
   }
 
   if (req.method !== 'GET' && req.method !== 'HEAD') {

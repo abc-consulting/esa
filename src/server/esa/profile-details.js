@@ -2,6 +2,7 @@
 
 const { ESA_BASE_URL, CACHE_TTL_MS } = require('../constants');
 const { fetchText, send } = require('../utils/http');
+const { decodeHtmlEntities } = require('../utils/html');
 
 const detailCache = new Map(); // uid → { data, fetchedAt }
 
@@ -50,7 +51,9 @@ async function resolveImageSizes(urls) {
 function parseEsaProfileDetails(uid, html) {
   // Name from <h2>
   const h2Match = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
-  const name = h2Match ? h2Match[1].replace(/<[^>]+>/g, '').trim() : `UID ${uid}`;
+  const name = h2Match
+    ? decodeHtmlEntities(h2Match[1].replace(/<[^>]+>/g, '')).trim()
+    : `UID ${uid}`;
 
   // Area from <h1><a ...>Area</a></h1>
   const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
@@ -144,8 +147,18 @@ async function fetchEsaProfileDetails(uid) {
   const html = await fetchText(url);
   const parsed = parseEsaProfileDetails(uid, html);
 
-  const resolvedImages = await resolveImageSizes(parsed.images);
-  const data = { ...parsed, images: resolvedImages };
+  const [resolvedImages, resolvedThumb] = await Promise.all([
+    resolveImageSizes(parsed.images),
+    parsed.profile.thumbUrl && /size=[^&]+/i.test(parsed.profile.thumbUrl)
+      ? probeSize(parsed.profile.thumbUrl)
+      : Promise.resolve(parsed.profile.thumbUrl),
+  ]);
+
+  const data = {
+    ...parsed,
+    profile: { ...parsed.profile, thumbUrl: resolvedThumb },
+    images: resolvedImages,
+  };
 
   detailCache.set(uid, { data, fetchedAt: Date.now() });
   return data;

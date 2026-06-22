@@ -11,4 +11,5 @@ export const STORAGE_KEYS = {
   lastSearch: 'esa.lastSearch.v2',
   provider: 'esa.provider.v1',
   rvFilters: 'esa.rvFilters.v1',
+  profileGroups: 'esa.profileGroups.v1',
 };

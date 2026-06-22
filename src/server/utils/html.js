@@ -13,7 +13,8 @@ function decodeHtmlEntities(value) {
     .replace(/&apos;/g, "'")
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ');
 }
 
 function getTagAttribute(tag, attributeName) {

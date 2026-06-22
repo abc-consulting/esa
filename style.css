@@ -549,6 +549,18 @@ body {
   color: #f87171;
 }
 
+.favorite-item--grouped .favorite-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.favorite-link-badge {
+  flex-shrink: 0;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
 #content-layout {
   max-width: 1200px;
   margin: 0 auto;
@@ -1139,3 +1151,164 @@ body {
     color: #94a3b8;
   }
 }
+
+/* ─── PROFILE GROUPS ─────────────────────────────────────────────────────── */
+
+.profile-card-linked {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 0.85rem;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.profile-card {
+  position: relative;
+}
+
+/* Link button in detail actions row */
+.profile-link-btn {
+  background: none;
+  border: 1px solid #475569;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+.profile-link-btn:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+.profile-link-btn.is-linked {
+  border-color: #6366f1;
+  color: #818cf8;
+}
+
+/* Pick-mode banner above profile cards */
+.link-pick-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e293b;
+  border: 1px solid #6366f1;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  color: #c7d2fe;
+}
+.link-pick-banner span { flex: 1; }
+.link-pick-banner button {
+  background: none;
+  border: 1px solid #475569;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+.link-pick-banner button:hover { background: #334155; }
+
+/* "Link this" overlay on card in pick mode */
+.profile-card-link-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(99,102,241,0.18);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 10px;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.profile-card:hover .profile-card-link-overlay {
+  opacity: 1;
+}
+.profile-card-link-overlay button {
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Auto-suggestion banner in detail panel */
+.link-suggestion-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #1e293b;
+  border: 1px solid #6366f1;
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+  color: #c7d2fe;
+}
+.link-suggestion-banner span { flex: 1; }
+.link-suggestion-banner .suggestion-link-btn {
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.link-suggestion-banner .suggestion-dismiss-btn {
+  background: none;
+  border: 1px solid #475569;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 0.82rem;
+}
+
+/* Merged detail view: tab bar */
+.merged-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid #334155;
+  margin-bottom: 14px;
+  padding-bottom: 0;
+  flex-wrap: wrap;
+}
+.merged-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #94a3b8;
+  padding: 6px 14px 8px;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.merged-tab:hover { color: #e2e8f0; }
+.merged-tab.active {
+  color: #818cf8;
+  border-bottom-color: #6366f1;
+  font-weight: 600;
+}
+.merged-tab-unlink {
+  margin-left: auto;
+  background: none;
+  border: 1px solid #475569;
+  color: #64748b;
+  border-radius: 6px;
+  padding: 3px 10px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.merged-tab-unlink:hover { color: #f87171; border-color: #f87171; }
