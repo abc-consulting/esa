@@ -3,7 +3,7 @@
 const { fetchText, send } = require('../utils/http');
 const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html');
 const { normalizeAreaName } = require('../utils/normalize');
-const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS } = require('../constants');
+const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS, REQUEST_TIMEOUT_MS } = require('../constants');
 const { URL } = require('url');
 const { groupProfilesByPhone } = require('../utils/groups');
 
@@ -219,9 +219,8 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
     });
   };
 
-  const firstHtml = await fetch(startUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-  }).then((r) => r.text());
+  // Use fetchText for the initial GET so we get the same timeout + redirect handling
+  const firstHtml = await fetchText(startUrl);
   pushProfilesFromHtml(firstHtml);
 
   const NEXT_BUTTON_SUFFIX = /DataPager\d*\$ctl02\$ctl00$/i;
@@ -241,6 +240,8 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
     body.set('__EVENTTARGET', target);
     body.set('__EVENTARGUMENT', '');
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     let response;
     try {
       response = await fetch(startUrl, {
@@ -250,10 +251,13 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body.toString(),
+        signal: controller.signal,
       });
     } catch {
+      clearTimeout(timer);
       break;
     }
+    clearTimeout(timer);
 
     if (!response.ok) break;
     const html = await response.text();
