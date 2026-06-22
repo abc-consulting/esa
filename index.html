@@ -52,7 +52,58 @@
     <div id="redvelvet-detail-filters" style="display:none">
       <input type="number" id="ageMinInput" placeholder="Age min" min="18" max="99" />
       <input type="number" id="ageMaxInput" placeholder="Age max" min="18" max="99" />
-      <input type="text" id="bustInput" placeholder="Bust (e.g. 34C)" autocomplete="off" />
+      <select id="bandSelect">
+        <option value="">Band</option>
+        <option value="28">28</option>
+        <option value="30">30</option>
+        <option value="32">32</option>
+        <option value="34">34</option>
+        <option value="36">36</option>
+        <option value="38">38</option>
+        <option value="40">40</option>
+        <option value="42">42</option>
+        <option value="44">44</option>
+      </select>
+      <select id="cupSelect">
+        <option value="">Cup</option>
+        <option value="A">A</option>
+        <option value="B">B</option>
+        <option value="C">C</option>
+        <option value="D">D</option>
+        <option value="DD">DD</option>
+      </select>
+      <select id="sizeMinSelect">
+        <option value="">Min size</option>
+        <option value="15">28A</option>
+        <option value="16">30A</option>
+        <option value="17">32A</option>
+        <option value="18">34A</option>
+        <option value="19">34B</option>
+        <option value="20">34C</option>
+        <option value="21">34D</option>
+        <option value="22">34DD</option>
+        <option value="23">36DD</option>
+        <option value="24">38DD</option>
+        <option value="25">40DD</option>
+        <option value="26">42DD</option>
+        <option value="27">44DD</option>
+      </select>
+      <select id="sizeMaxSelect">
+        <option value="">Max size</option>
+        <option value="15">28A</option>
+        <option value="16">30A</option>
+        <option value="17">32A</option>
+        <option value="18">34A</option>
+        <option value="19">34B</option>
+        <option value="20">34C</option>
+        <option value="21">34D</option>
+        <option value="22">34DD</option>
+        <option value="23">36DD</option>
+        <option value="24">38DD</option>
+        <option value="25">40DD</option>
+        <option value="26">42DD</option>
+        <option value="27">44DD</option>
+      </select>
       <button id="filterBtn">Filter</button>
     </div>
     <div id="filter-chips"></div>

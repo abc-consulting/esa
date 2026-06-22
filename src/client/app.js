@@ -52,7 +52,10 @@ const {
   redvelvetDetailFilters,
   ageMinInput,
   ageMaxInput,
-  bustInput,
+  bandSelect,
+  cupSelect,
+  sizeMinSelect,
+  sizeMaxSelect,
 } = dom;
 
 // ─── STATE ────────────────────────────────────────────────────────────────
@@ -71,7 +74,22 @@ let activeAreas        = new Set();
 let areaProfileSets    = new Map();
 let areaProfileObjects = new Map();
 let detailCache        = new Map();
-let ageMin = null, ageMax = null, bustFilter = '';
+let ageMin = null, ageMax = null, selectedBand = null, selectedCup = '', sizeMinVol = null, sizeMaxVol = null;
+
+// ─── BUST SIZE HELPERS ────────────────────────────────────────────────────
+
+const CUP_INDEX = { A: 1, B: 2, C: 3, D: 4, DD: 5 };
+
+function parseBust(str) {
+  const m = String(str || '').trim().match(/^(\d+)\s*(A|B|C|DD|D)$/i);
+  if (!m) return null;
+  return { band: parseInt(m[1]), cup: m[2].toUpperCase() };
+}
+
+function bustVolumeGroup(band, cup) {
+  const idx = CUP_INDEX[String(cup).toUpperCase()];
+  return idx ? (band / 2) + idx : null;
+}
 
 // ─── DETAIL CACHE ─────────────────────────────────────────────────────────
 
@@ -151,10 +169,14 @@ function clearProfiles() {
   clearProfilesContainer();
   profileLinks = [];
   filterKeyword = '';
-  ageMin = null; ageMax = null; bustFilter = '';
+  ageMin = null; ageMax = null;
+  selectedBand = null; selectedCup = ''; sizeMinVol = null; sizeMaxVol = null;
   if (ageMinInput) ageMinInput.value = '';
   if (ageMaxInput) ageMaxInput.value = '';
-  if (bustInput) bustInput.value = '';
+  if (bandSelect) bandSelect.value = '';
+  if (cupSelect) cupSelect.value = '';
+  if (sizeMinSelect) sizeMinSelect.value = '';
+  if (sizeMaxSelect) sizeMaxSelect.value = '';
   activeTags.clear();
   tagProfileSets.clear();
   tagProfileObjects.clear();
@@ -569,12 +591,27 @@ function renderProfileCards() {
     .filter(profile => profile.name.includes(filterKeyword) || profile.area.includes(filterKeyword))
     .filter(profile => {
       if (profile.provider !== 'redvelvet') return true;
-      if (!ageMin && !ageMax && !bustFilter) return true;
+      const hasBust = selectedBand || selectedCup || sizeMinVol !== null || sizeMaxVol !== null;
+      if (!ageMin && !ageMax && !hasBust) return true;
       const detail = detailCache.get(profile.uid);
       if (!detail) return true;
       if (ageMin && Number(detail.age) < ageMin) return false;
       if (ageMax && Number(detail.age) > ageMax) return false;
-      if (bustFilter && !detail.bust?.toLowerCase().includes(bustFilter.toLowerCase())) return false;
+      if (hasBust) {
+        const parsed = parseBust(detail.bust);
+        if (parsed) {
+          const vol = bustVolumeGroup(parsed.band, parsed.cup);
+          if (sizeMinVol !== null && vol < sizeMinVol) return false;
+          if (sizeMaxVol !== null && vol > sizeMaxVol) return false;
+          if (selectedBand && selectedCup) {
+            if (vol !== bustVolumeGroup(selectedBand, selectedCup)) return false;
+          } else if (selectedCup) {
+            if (parsed.cup !== selectedCup) return false;
+          } else if (selectedBand) {
+            if (parsed.band !== selectedBand) return false;
+          }
+        }
+      }
       return true;
     });
 
@@ -1051,8 +1088,12 @@ filterInput.addEventListener('input', handleFilterInput);
 async function applyDetailFilters() {
   ageMin = Number(ageMinInput.value) || null;
   ageMax = Number(ageMaxInput.value) || null;
-  bustFilter = bustInput.value.trim();
-  if (ageMin || ageMax || bustFilter) await ensureDetailCache(profileLinks);
+  selectedBand = bandSelect.value ? parseInt(bandSelect.value) : null;
+  selectedCup  = cupSelect.value || '';
+  sizeMinVol   = sizeMinSelect.value ? parseInt(sizeMinSelect.value) : null;
+  sizeMaxVol   = sizeMaxSelect.value ? parseInt(sizeMaxSelect.value) : null;
+  const hasBust = selectedBand || selectedCup || sizeMinVol !== null || sizeMaxVol !== null;
+  if (ageMin || ageMax || hasBust) await ensureDetailCache(profileLinks);
   renderProfileCards();
 }
 
