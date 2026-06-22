@@ -26,6 +26,8 @@ export const dom = {
   ageMaxInput: document.getElementById('ageMaxInput'),
   bandSelect:    document.getElementById('bandSelect'),
   cupSelect:     document.getElementById('cupSelect'),
-  sizeMinSelect: document.getElementById('sizeMinSelect'),
-  sizeMaxSelect: document.getElementById('sizeMaxSelect'),
+  sizeMinBtn:   document.getElementById('sizeMinBtn'),
+  sizeMinPanel: document.getElementById('sizeMinPanel'),
+  sizeMaxBtn:   document.getElementById('sizeMaxBtn'),
+  sizeMaxPanel: document.getElementById('sizeMaxPanel'),
 };

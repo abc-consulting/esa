@@ -72,38 +72,14 @@
         <option value="D">D</option>
         <option value="DD">DD</option>
       </select>
-      <select id="sizeMinSelect">
-        <option value="">Min size</option>
-        <option value="15">28A</option>
-        <option value="16">30A</option>
-        <option value="17">32A</option>
-        <option value="18">34A</option>
-        <option value="19">34B</option>
-        <option value="20">34C</option>
-        <option value="21">34D</option>
-        <option value="22">34DD</option>
-        <option value="23">36DD</option>
-        <option value="24">38DD</option>
-        <option value="25">40DD</option>
-        <option value="26">42DD</option>
-        <option value="27">44DD</option>
-      </select>
-      <select id="sizeMaxSelect">
-        <option value="">Max size</option>
-        <option value="15">28A</option>
-        <option value="16">30A</option>
-        <option value="17">32A</option>
-        <option value="18">34A</option>
-        <option value="19">34B</option>
-        <option value="20">34C</option>
-        <option value="21">34D</option>
-        <option value="22">34DD</option>
-        <option value="23">36DD</option>
-        <option value="24">38DD</option>
-        <option value="25">40DD</option>
-        <option value="26">42DD</option>
-        <option value="27">44DD</option>
-      </select>
+      <div id="sizeMinWrap" class="size-dropdown-wrap">
+        <button id="sizeMinBtn" class="multi-select-btn" type="button">Min size ▾</button>
+        <div id="sizeMinPanel" class="multi-select-panel size-panel" style="display:none"></div>
+      </div>
+      <div id="sizeMaxWrap" class="size-dropdown-wrap">
+        <button id="sizeMaxBtn" class="multi-select-btn" type="button">Max size ▾</button>
+        <div id="sizeMaxPanel" class="multi-select-panel size-panel" style="display:none"></div>
+      </div>
       <button id="filterBtn">Filter</button>
     </div>
     <div id="filter-chips"></div>

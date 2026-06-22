@@ -54,8 +54,10 @@ const {
   ageMaxInput,
   bandSelect,
   cupSelect,
-  sizeMinSelect,
-  sizeMaxSelect,
+  sizeMinBtn,
+  sizeMinPanel,
+  sizeMaxBtn,
+  sizeMaxPanel,
 } = dom;
 
 // ─── STATE ────────────────────────────────────────────────────────────────
@@ -90,6 +92,22 @@ function bustVolumeGroup(band, cup) {
   const idx = CUP_INDEX[String(cup).toUpperCase()];
   return idx ? (band / 2) + idx : null;
 }
+
+const SIZE_LEVELS = [
+  { vol: 15, label: '28A',  sisters: [] },
+  { vol: 16, label: '30A',  sisters: ['28B'] },
+  { vol: 17, label: '32A',  sisters: ['30B', '28C'] },
+  { vol: 18, label: '34A',  sisters: ['32B', '30C', '28D'] },
+  { vol: 19, label: '34B',  sisters: ['32C', '30D', '28DD', '36A'] },
+  { vol: 20, label: '34C',  sisters: ['32D', '30DD', '36B', '38A'] },
+  { vol: 21, label: '34D',  sisters: ['32DD', '36C', '38B', '40A'] },
+  { vol: 22, label: '34DD', sisters: ['36D', '38C', '40B', '42A'] },
+  { vol: 23, label: '36DD', sisters: ['38D', '40C', '42B', '44A'] },
+  { vol: 24, label: '38DD', sisters: ['40D', '42C', '44B'] },
+  { vol: 25, label: '40DD', sisters: ['42D', '44C'] },
+  { vol: 26, label: '42DD', sisters: ['44D'] },
+  { vol: 27, label: '44DD', sisters: [] },
+];
 
 // ─── DETAIL CACHE ─────────────────────────────────────────────────────────
 
@@ -175,8 +193,8 @@ function clearProfiles() {
   if (ageMaxInput) ageMaxInput.value = '';
   if (bandSelect) bandSelect.value = '';
   if (cupSelect) cupSelect.value = '';
-  if (sizeMinSelect) sizeMinSelect.value = '';
-  if (sizeMaxSelect) sizeMaxSelect.value = '';
+  if (sizeMinBtn) { sizeMinBtn.textContent = 'Min size ▾'; sizeMinPanel.querySelectorAll('.size-option').forEach(r => r.classList.remove('selected')); }
+  if (sizeMaxBtn) { sizeMaxBtn.textContent = 'Max size ▾'; sizeMaxPanel.querySelectorAll('.size-option').forEach(r => r.classList.remove('selected')); }
   activeTags.clear();
   tagProfileSets.clear();
   tagProfileObjects.clear();
@@ -975,17 +993,35 @@ function processImages(imgs, extraCandidates = [], extraSubIds = []) {
 
 let redvelvetDropdownsReady = false;
 
+function addPanelSearch(panel, placeholder) {
+  const si = document.createElement('input');
+  si.type = 'text';
+  si.placeholder = placeholder;
+  si.className = 'panel-search';
+  si.addEventListener('click', e => e.stopPropagation());
+  si.addEventListener('input', () => {
+    const q = si.value.toLowerCase();
+    panel.querySelectorAll('.tag-option').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  panel.appendChild(si);
+  return si;
+}
+
 async function initRedvelvetDropdowns() {
   if (redvelvetDropdownsReady) return;
   redvelvetDropdownsReady = true;
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
 
   // Areas multi-select
+  let areaSearchInput;
   try {
     const res = await fetch(`${relayBase}/redvelvet-areas?cityBucket=2`);
     if (res.ok) {
       const data = await res.json();
       areaDropdownPanel.innerHTML = '';
+      areaSearchInput = addPanelSearch(areaDropdownPanel, 'Search areas…');
       (data.areas || []).forEach(area => {
         const row = document.createElement('label');
         row.className = 'tag-option';
@@ -993,7 +1029,9 @@ async function initRedvelvetDropdowns() {
         cb.type = 'checkbox';
         cb.value = area;
         cb.addEventListener('change', () => toggleRedvelvetArea(area));
-        row.append(cb, document.createTextNode(` ${area}`));
+        const span = document.createElement('span');
+        span.textContent = area;
+        row.append(cb, span);
         areaDropdownPanel.appendChild(row);
       });
     }
@@ -1003,6 +1041,11 @@ async function initRedvelvetDropdowns() {
     e.stopPropagation();
     const open = areaDropdownPanel.style.display === 'block';
     areaDropdownPanel.style.display = open ? 'none' : 'block';
+    if (!open && areaSearchInput) {
+      areaSearchInput.value = '';
+      areaDropdownPanel.querySelectorAll('.tag-option').forEach(r => r.style.display = '');
+      areaSearchInput.focus();
+    }
   });
 
   document.addEventListener('click', (e) => {
@@ -1012,11 +1055,13 @@ async function initRedvelvetDropdowns() {
   });
 
   // Tags multi-select
+  let tagSearchInput;
   try {
     const res = await fetch(`${relayBase}/redvelvet-tags?`);
     if (res.ok) {
       const data = await res.json();
       tagDropdownPanel.innerHTML = '';
+      tagSearchInput = addPanelSearch(tagDropdownPanel, 'Search tags…');
       (data.tags || []).forEach(({ label }) => {
         const row = document.createElement('label');
         row.className = 'tag-option';
@@ -1024,7 +1069,9 @@ async function initRedvelvetDropdowns() {
         cb.type = 'checkbox';
         cb.value = label;
         cb.addEventListener('change', () => toggleRedvelvetTag(label));
-        row.append(cb, document.createTextNode(` ${label}`));
+        const span = document.createElement('span');
+        span.textContent = label;
+        row.append(cb, span);
         tagDropdownPanel.appendChild(row);
       });
     }
@@ -1034,6 +1081,11 @@ async function initRedvelvetDropdowns() {
     e.stopPropagation();
     const open = tagDropdownPanel.style.display === 'block';
     tagDropdownPanel.style.display = open ? 'none' : 'block';
+    if (!open && tagSearchInput) {
+      tagSearchInput.value = '';
+      tagDropdownPanel.querySelectorAll('.tag-option').forEach(r => r.style.display = '');
+      tagSearchInput.focus();
+    }
   });
 
   document.addEventListener('click', (e) => {
@@ -1041,6 +1093,64 @@ async function initRedvelvetDropdowns() {
       tagDropdownPanel.style.display = 'none';
     }
   });
+}
+
+let sizeDropdownsReady = false;
+
+function initSizeDropdowns() {
+  if (sizeDropdownsReady) return;
+  sizeDropdownsReady = true;
+
+  function buildPanel(panel, btn, getVol, setVol, defaultLabel) {
+    SIZE_LEVELS.forEach(({ vol, label, sisters }) => {
+      const row = document.createElement('div');
+      row.className = 'size-option';
+      row.dataset.vol = vol;
+      const primary = document.createElement('span');
+      primary.className = 'size-label';
+      primary.textContent = label;
+      row.appendChild(primary);
+      if (sisters.length) {
+        const sub = document.createElement('span');
+        sub.className = 'size-sisters';
+        sub.textContent = sisters.join(' · ');
+        row.appendChild(sub);
+      }
+      row.addEventListener('click', () => {
+        const current = getVol();
+        const next = current === vol ? null : vol;
+        setVol(next);
+        panel.querySelectorAll('.size-option').forEach(r => r.classList.remove('selected'));
+        if (next !== null) row.classList.add('selected');
+        btn.textContent = next !== null
+          ? `${defaultLabel === 'Min size ▾' ? '≥' : '≤'} ${label} ▾`
+          : defaultLabel;
+        panel.style.display = 'none';
+        applyDetailFilters();
+      });
+      panel.appendChild(row);
+    });
+
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const open = panel.style.display === 'block';
+      panel.style.display = open ? 'none' : 'block';
+    });
+    document.addEventListener('click', e => {
+      if (!btn.parentElement.contains(e.target)) panel.style.display = 'none';
+    });
+  }
+
+  buildPanel(
+    sizeMinPanel, sizeMinBtn,
+    () => sizeMinVol, v => { sizeMinVol = v; },
+    'Min size ▾',
+  );
+  buildPanel(
+    sizeMaxPanel, sizeMaxBtn,
+    () => sizeMaxVol, v => { sizeMaxVol = v; },
+    'Max size ▾',
+  );
 }
 
 function showRedvelvetDropdowns() {
@@ -1090,8 +1200,6 @@ async function applyDetailFilters() {
   ageMax = Number(ageMaxInput.value) || null;
   selectedBand = bandSelect.value ? parseInt(bandSelect.value) : null;
   selectedCup  = cupSelect.value || '';
-  sizeMinVol   = sizeMinSelect.value ? parseInt(sizeMinSelect.value) : null;
-  sizeMaxVol   = sizeMaxSelect.value ? parseInt(sizeMaxSelect.value) : null;
   const hasBust = selectedBand || selectedCup || sizeMinVol !== null || sizeMaxVol !== null;
   if (ageMin || ageMax || hasBust) await ensureDetailCache(profileLinks);
   renderProfileCards();
@@ -1113,6 +1221,7 @@ if (siteSelect) {
   if (activeProvider === 'redvelvet') {
     showRedvelvetDropdowns();
     initRedvelvetDropdowns();
+    initSizeDropdowns();
   }
   siteSelect.addEventListener('change', () => {
     saveSelectedProvider(getCurrentProvider());
@@ -1125,6 +1234,7 @@ if (siteSelect) {
     if (activeProvider === 'redvelvet') {
       showRedvelvetDropdowns();
       initRedvelvetDropdowns();
+      initSizeDropdowns();
     } else {
       hideRedvelvetDropdowns();
     }
