@@ -38,7 +38,7 @@ async function buildRedvelvetAreaHashMap() {
         name: areaName,
         areaId,
         cityBucket,
-        url: `https://redvelvet.co.za/escorts/escorts_in_area/${encodeURIComponent(areaName).replace(/%20/g, '+')}/${areaId}/${cityBucket}`,
+        url: `https://redvelvet.co.za/escorts/escorts_in_area/${areaSlug}/${areaId}/${cityBucket}`,
       });
       map.set(areaName, entries);
     }
