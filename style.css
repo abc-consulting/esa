@@ -219,7 +219,42 @@ body {
 
 #bandSelect { width: 68px; }
 #cupSelect  { width: 62px; }
-#sizeMinSelect, #sizeMaxSelect { width: 84px; }
+
+.panel-search {
+  display: block;
+  width: calc(100% - 20px);
+  margin: 8px 10px 4px;
+  padding: 5px 8px;
+  background: #0f172a;
+  border: 1px solid #4a4a6a;
+  border-radius: 6px;
+  color: #e0e0e0;
+  font-size: 0.82rem;
+  outline: none;
+}
+.panel-search:focus { border-color: #c084fc; }
+
+.size-dropdown-wrap { position: relative; }
+.size-panel { min-width: 130px; }
+
+.size-option {
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.size-option:hover, .size-option.selected { background: #1a2a4a; }
+.size-option.selected .size-label { color: #c084fc; }
+
+.size-label {
+  display: block;
+  font-size: 0.87rem;
+  color: #e0e0e0;
+}
+.size-sisters {
+  display: block;
+  font-size: 0.73rem;
+  color: #6b7280;
+  margin-top: 1px;
+}
 
 #filter-chips {
   display: flex;
@@ -705,7 +740,8 @@ body {
 
   #redvelvet-detail-filters { flex-wrap: wrap; }
   #redvelvet-detail-filters input { width: auto; flex: 1; min-width: 70px; }
-  #redvelvet-detail-filters select { width: auto; flex: 1; min-width: 60px; }
+  #bandSelect, #cupSelect { width: auto; flex: 1; min-width: 60px; }
+  .size-dropdown-wrap { flex: 1; min-width: 80px; }
 
   .search-bar { position: relative; }
   .multi-select-wrap { position: static; }
