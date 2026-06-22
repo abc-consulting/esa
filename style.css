@@ -1152,6 +1152,33 @@ body {
   }
 }
 
+/* ─── PHONE GROUPS ───────────────────────────────────────────────────────── */
+
+.phone-group-wrapper {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  background: rgba(99, 102, 241, 0.07);
+  border: 1px solid rgba(99, 102, 241, 0.22);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.phone-group-label {
+  width: 100%;
+  font-size: 0.72rem;
+  color: #818cf8;
+  letter-spacing: 0.03em;
+  padding: 0 2px 2px;
+}
+
+#content-layout.has-profile .phone-group-wrapper {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+
 /* ─── PROFILE GROUPS ─────────────────────────────────────────────────────── */
 
 .profile-card-linked {

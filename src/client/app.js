@@ -18,7 +18,7 @@ import {
   fetchRedvelvetProfilesByNickname as fetchRedvelvetProfilesByNicknameService,
   fetchRedvelvetProfilesByArea as fetchRedvelvetProfilesByAreaService,
 } from './modules/providers/redvelvet-service.js';
-import { debounce } from './modules/common-utils.js';
+import { debounce, flattenWithPhoneGroups } from './modules/common-utils.js';
 import {
   initFavorites,
   loadFavorites,
@@ -745,7 +745,7 @@ async function runRedvelvetSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = (data.groups || []).flatMap(g => g.profiles || []);
+    profileLinks = flattenWithPhoneGroups(data.groups);
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
@@ -785,7 +785,7 @@ async function runEsaSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = (data.groups || []).flatMap(g => g.profiles || []);
+    profileLinks = flattenWithPhoneGroups(data.groups);
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
@@ -881,6 +881,20 @@ function confirmLink(profileA, profileB) {
 
 // ─── RENDERING ────────────────────────────────────────────────────────────
 
+function buildDisplayEntries(profiles) {
+  const seen = new Set();
+  return profiles.reduce((acc, profile) => {
+    const grp = profile._phoneGroup;
+    if (!grp) {
+      acc.push({ type: 'single', profile });
+    } else if (!seen.has(grp)) {
+      seen.add(grp);
+      acc.push({ type: 'phoneGroup', phone: grp, profiles: profiles.filter(p => p._phoneGroup === grp) });
+    }
+    return acc;
+  }, []);
+}
+
 function cardClickHandler(item) {
   fetchImagesFromProfile(item);
 }
@@ -964,12 +978,30 @@ function syncMobileDrawer(filteredProfiles) {
   }
 
   drawerList.innerHTML = '';
-  filteredProfiles.forEach((item, index) => {
-    if (!item.uid) return;
-    drawerList.appendChild(buildProfileCard(item, index, {
-      onClickExtra: closeProfilesDrawer,
-      onProfileClick: cardClickHandler,
-    }));
+  let drawerIdx = 0;
+  buildDisplayEntries(filteredProfiles).forEach(entry => {
+    if (entry.type === 'single') {
+      if (!entry.profile.uid) return;
+      drawerList.appendChild(buildProfileCard(entry.profile, drawerIdx++, {
+        onClickExtra: closeProfilesDrawer,
+        onProfileClick: cardClickHandler,
+      }));
+    } else {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'phone-group-wrapper';
+      const label = document.createElement('div');
+      label.className = 'phone-group-label';
+      label.textContent = `Same number: ${entry.phone}`;
+      wrapper.appendChild(label);
+      entry.profiles.forEach(p => {
+        if (!p.uid) return;
+        wrapper.appendChild(buildProfileCard(p, drawerIdx++, {
+          onClickExtra: closeProfilesDrawer,
+          onProfileClick: cardClickHandler,
+        }));
+      });
+      drawerList.appendChild(wrapper);
+    }
   });
 }
 
@@ -1004,9 +1036,25 @@ function renderProfileCards() {
 
   if (filteredProfiles.length > 0 && filterBar) filterBar.style.display = 'flex';
 
-  filteredProfiles.forEach((item, index) => {
-    if (!item.uid) return;
-    profilesContainer.appendChild(buildProfileCard(item, index, { onProfileClick: cardClickHandler }));
+  const displayEntries = buildDisplayEntries(filteredProfiles);
+  let cardIndex = 0;
+  displayEntries.forEach(entry => {
+    if (entry.type === 'single') {
+      if (!entry.profile.uid) return;
+      profilesContainer.appendChild(buildProfileCard(entry.profile, cardIndex++, { onProfileClick: cardClickHandler }));
+    } else {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'phone-group-wrapper';
+      const label = document.createElement('div');
+      label.className = 'phone-group-label';
+      label.textContent = `Same number: ${entry.phone}`;
+      wrapper.appendChild(label);
+      entry.profiles.forEach(p => {
+        if (!p.uid) return;
+        wrapper.appendChild(buildProfileCard(p, cardIndex++, { onProfileClick: cardClickHandler }));
+      });
+      profilesContainer.appendChild(wrapper);
+    }
   });
 
   syncMobileDrawer(filteredProfiles);
