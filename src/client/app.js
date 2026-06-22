@@ -539,22 +539,40 @@ async function fetchImagesFromProfile(item) {
     });
   }
 
-  // Auto-suggest: check if any cached profile shares the same phone
+  // Auto-suggest: check if any cached profile or phone-group peer shares the same phone
   if (data.profile?.phone) {
     const myPhone = normalizePhone(data.profile.phone);
     const myKey = `${data.profile.provider}:${data.profile.uid}`;
-    if (myPhone.length >= 7) {
+
+    const alreadyLinkedWith = (p) => {
+      const ga = findGroupForProfile(data.profile.provider, data.profile.uid);
+      const gb = findGroupForProfile(p.provider, p.uid);
+      return ga && gb && ga.id === gb.id;
+    };
+
+    let suggested = false;
+
+    // Check profiles in the same phone group (known at search time, no extra fetch needed)
+    if (!suggested && item._phoneGroup) {
+      for (const p of profileLinks) {
+        if (!p.uid || p._phoneGroup !== item._phoneGroup) continue;
+        const otherKey = `${p.provider}:${p.uid}`;
+        if (otherKey === myKey) continue;
+        const pairKey = [myKey, otherKey].sort().join('|');
+        if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(p)) continue;
+        showPhoneSuggestion(data.profile, p, pairKey);
+        suggested = true;
+        break;
+      }
+    }
+
+    // Fallback: check detailCache for profiles opened in a previous search
+    if (!suggested && myPhone.length >= 7) {
       for (const [key, cached] of detailCache) {
         if (key === myKey) continue;
         if (normalizePhone(cached.phone) !== myPhone) continue;
         const pairKey = [myKey, key].sort().join('|');
-        if (dismissedSuggestions.has(pairKey)) continue;
-        const alreadyLinked = (() => {
-          const ga = findGroupForProfile(data.profile.provider, data.profile.uid);
-          const gb = findGroupForProfile(cached.provider, cached.uid);
-          return ga && gb && ga.id === gb.id;
-        })();
-        if (alreadyLinked) continue;
+        if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(cached)) continue;
         showPhoneSuggestion(data.profile, cached, pairKey);
         break;
       }
@@ -881,19 +899,6 @@ function confirmLink(profileA, profileB) {
 
 // ─── RENDERING ────────────────────────────────────────────────────────────
 
-function buildDisplayEntries(profiles) {
-  const seen = new Set();
-  return profiles.reduce((acc, profile) => {
-    const grp = profile._phoneGroup;
-    if (!grp) {
-      acc.push({ type: 'single', profile });
-    } else if (!seen.has(grp)) {
-      seen.add(grp);
-      acc.push({ type: 'phoneGroup', phone: grp, profiles: profiles.filter(p => p._phoneGroup === grp) });
-    }
-    return acc;
-  }, []);
-}
 
 function cardClickHandler(item) {
   fetchImagesFromProfile(item);
@@ -978,30 +983,12 @@ function syncMobileDrawer(filteredProfiles) {
   }
 
   drawerList.innerHTML = '';
-  let drawerIdx = 0;
-  buildDisplayEntries(filteredProfiles).forEach(entry => {
-    if (entry.type === 'single') {
-      if (!entry.profile.uid) return;
-      drawerList.appendChild(buildProfileCard(entry.profile, drawerIdx++, {
-        onClickExtra: closeProfilesDrawer,
-        onProfileClick: cardClickHandler,
-      }));
-    } else {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'phone-group-wrapper';
-      const label = document.createElement('div');
-      label.className = 'phone-group-label';
-      label.textContent = `Same number: ${entry.phone}`;
-      wrapper.appendChild(label);
-      entry.profiles.forEach(p => {
-        if (!p.uid) return;
-        wrapper.appendChild(buildProfileCard(p, drawerIdx++, {
-          onClickExtra: closeProfilesDrawer,
-          onProfileClick: cardClickHandler,
-        }));
-      });
-      drawerList.appendChild(wrapper);
-    }
+  filteredProfiles.forEach((item, index) => {
+    if (!item.uid) return;
+    drawerList.appendChild(buildProfileCard(item, index, {
+      onClickExtra: closeProfilesDrawer,
+      onProfileClick: cardClickHandler,
+    }));
   });
 }
 
@@ -1036,25 +1023,9 @@ function renderProfileCards() {
 
   if (filteredProfiles.length > 0 && filterBar) filterBar.style.display = 'flex';
 
-  const displayEntries = buildDisplayEntries(filteredProfiles);
-  let cardIndex = 0;
-  displayEntries.forEach(entry => {
-    if (entry.type === 'single') {
-      if (!entry.profile.uid) return;
-      profilesContainer.appendChild(buildProfileCard(entry.profile, cardIndex++, { onProfileClick: cardClickHandler }));
-    } else {
-      const wrapper = document.createElement('div');
-      wrapper.className = 'phone-group-wrapper';
-      const label = document.createElement('div');
-      label.className = 'phone-group-label';
-      label.textContent = `Same number: ${entry.phone}`;
-      wrapper.appendChild(label);
-      entry.profiles.forEach(p => {
-        if (!p.uid) return;
-        wrapper.appendChild(buildProfileCard(p, cardIndex++, { onProfileClick: cardClickHandler }));
-      });
-      profilesContainer.appendChild(wrapper);
-    }
+  filteredProfiles.forEach((item, index) => {
+    if (!item.uid) return;
+    profilesContainer.appendChild(buildProfileCard(item, index, { onProfileClick: cardClickHandler }));
   });
 
   syncMobileDrawer(filteredProfiles);
