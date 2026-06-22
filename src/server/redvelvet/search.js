@@ -2,8 +2,7 @@
 
 const { send } = require('../utils/http');
 const { CACHE_TTL_MS, RACIAL_TAGS } = require('../constants');
-const { getRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap } = require('./areas');
-const { fetchRedvelvetProfilesWithPostback } = require('./profiles');
+const { getRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap, fetchRedvelvetProfilesWithPostback } = require('./areas');
 const { resolveRedvelvetTagUrl } = require('./tags');
 const { fetchProfileAgeAndBust } = require('./profile-details');
 const { groupProfilesByPhone } = require('../utils/groups');

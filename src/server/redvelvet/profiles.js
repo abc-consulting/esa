@@ -3,8 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 const { send, fetchText } = require('../utils/http');
-const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html');
-const { parseRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap } = require('./areas');
+const { getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap, fetchRedvelvetProfilesWithPostback } = require('./areas');
 const { resolveRedvelvetTagUrl } = require('./tags');
 const { URL } = require('url');
 
@@ -34,70 +33,6 @@ async function fetchProfileStub(uid) {
     }
   } catch { /* non-fatal */ }
   return null;
-}
-
-async function fetchRedvelvetProfilesWithPostback(startUrl) {
-  const byUid = new Map();
-  const seenTargets = new Set();
-  const queue = [];
-
-  const pushProfilesFromHtml = (html) => {
-    parseRedvelvetAreaProfiles(html).forEach((profile) => {
-      const key = String(profile.uid || '').trim();
-      if (!key || byUid.has(key)) return;
-      byUid.set(key, profile);
-    });
-  };
-
-  const firstHtml = await fetch(startUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-  }).then((r) => r.text());
-  pushProfilesFromHtml(firstHtml);
-
-  // Walk pages by always clicking the › (next) button.
-  // The › button target is consistently DataPager*$ctl02$ctl00 across all pages.
-  // Using › guarantees sequential page advancement with the freshest __VIEWSTATE.
-  const NEXT_BUTTON_SUFFIX = /DataPager\d*\$ctl02\$ctl00$/i;
-  const MAX_POSTBACK_PAGES = 50;
-  let currentHtml = firstHtml;
-  let traversed = 0;
-
-  while (traversed < MAX_POSTBACK_PAGES) {
-    const allTargets = extractDataPagerTargets(currentHtml);
-    const target = allTargets.find(t => NEXT_BUTTON_SUFFIX.test(t));
-    // No › button means we're on the last page
-    if (!target) break;
-    seenTargets.add(target);
-    traversed += 1;
-
-    const fields = extractHiddenFields(currentHtml);
-    const body = new URLSearchParams(fields);
-    body.set('__EVENTTARGET', target);
-    body.set('__EVENTARGUMENT', '');
-
-    let response;
-    try {
-      response = await fetch(startUrl, {
-        method: 'POST',
-        headers: {
-          'User-Agent': 'Mozilla/5.0',
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body.toString(),
-      });
-    } catch {
-      break;
-    }
-
-    if (!response.ok) break;
-    const html = await response.text();
-    if (!html) break;
-
-    pushProfilesFromHtml(html);
-    currentHtml = html; // next iteration posts from this page's __VIEWSTATE
-  }
-
-  return Array.from(byUid.values());
 }
 
 async function handleRedvelvetProfileLookup(req, res) {
@@ -172,7 +107,6 @@ async function handleRedvelvetTagProfiles(req, res, serverBase) {
 }
 
 module.exports = {
-  fetchRedvelvetProfilesWithPostback,
   handleRedvelvetProfileLookup,
   handleRedvelvetTagProfiles,
 };
