@@ -1,6 +1,7 @@
 'use strict';
 
 const { fetchText, send } = require('../utils/http');
+const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html');
 const { normalizeAreaName } = require('../utils/normalize');
 const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS } = require('../constants');
 const { URL } = require('url');
@@ -206,6 +207,65 @@ function parseRedvelvetAreaProfiles(html) {
   return profiles;
 }
 
+async function fetchRedvelvetProfilesWithPostback(startUrl) {
+  const byUid = new Map();
+  const seenTargets = new Set();
+
+  const pushProfilesFromHtml = (html) => {
+    parseRedvelvetAreaProfiles(html).forEach((profile) => {
+      const key = String(profile.uid || '').trim();
+      if (!key || byUid.has(key)) return;
+      byUid.set(key, profile);
+    });
+  };
+
+  const firstHtml = await fetch(startUrl, {
+    headers: { 'User-Agent': 'Mozilla/5.0' },
+  }).then((r) => r.text());
+  pushProfilesFromHtml(firstHtml);
+
+  const NEXT_BUTTON_SUFFIX = /DataPager\d*\$ctl02\$ctl00$/i;
+  const MAX_POSTBACK_PAGES = 50;
+  let currentHtml = firstHtml;
+  let traversed = 0;
+
+  while (traversed < MAX_POSTBACK_PAGES) {
+    const allTargets = extractDataPagerTargets(currentHtml);
+    const target = allTargets.find(t => NEXT_BUTTON_SUFFIX.test(t));
+    if (!target) break;
+    seenTargets.add(target);
+    traversed += 1;
+
+    const fields = extractHiddenFields(currentHtml);
+    const body = new URLSearchParams(fields);
+    body.set('__EVENTTARGET', target);
+    body.set('__EVENTARGUMENT', '');
+
+    let response;
+    try {
+      response = await fetch(startUrl, {
+        method: 'POST',
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body.toString(),
+      });
+    } catch {
+      break;
+    }
+
+    if (!response.ok) break;
+    const html = await response.text();
+    if (!html) break;
+
+    pushProfilesFromHtml(html);
+    currentHtml = html;
+  }
+
+  return Array.from(byUid.values());
+}
+
 async function getRedvelvetAreaProfiles(areaName, preferredCityBucket = '2') {
   const normalizedArea = normalizeAreaName(areaName);
   if (!normalizedArea) return { areaUrl: '', profiles: [] };
@@ -219,8 +279,7 @@ async function getRedvelvetAreaProfiles(areaName, preferredCityBucket = '2') {
   const areaEntry = findAreaEntryByName(areaMap, normalizedArea, preferredCityBucket);
   if (!areaEntry) return { areaUrl: '', profiles: [] };
 
-  const html = await fetchText(areaEntry.url);
-  const profiles = parseRedvelvetAreaProfiles(html);
+  const profiles = await fetchRedvelvetProfilesWithPostback(areaEntry.url);
   areaProfileListCache.set(normalizedArea, { profiles, areaUrl: areaEntry.url, fetchedAt: Date.now() });
   return { areaUrl: areaEntry.url, profiles };
 }
@@ -339,6 +398,7 @@ module.exports = {
   getRedvelvetAreaProfiles,
   parseRedvelvetProfileFromHref,
   parseRedvelvetAreaProfiles,
+  fetchRedvelvetProfilesWithPostback,
   handleRedvelvetAreaLookup,
   handleRedvelvetAreaProfiles,
   handleRedvelvetAreas,

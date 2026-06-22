@@ -15,6 +15,7 @@ const { handleRedvelvetTags, buildRedvelvetTagHashMap } = require('./redvelvet/t
 const { handleRedvelvetProfileLookup, handleRedvelvetTagProfiles } = require('./redvelvet/profiles');
 const { handleRedvelvetProfileDetails } = require('./redvelvet/profile-details');
 const { handleRedvelvetSearch } = require('./redvelvet/search');
+const { handleRedvelvetNicknameSearch } = require('./redvelvet/nickname-search');
 const { getSessionCookie } = require('./redvelvet/auth');
 const { handleEsaProfilesByNickname, handleEsaProfilesByArea } = require('./esa/profiles');
 const { handleEsaProfileDetails } = require('./esa/profile-details');
@@ -84,6 +85,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url === '/redvelvet-search' && req.method === 'POST') {
     await handleRedvelvetSearch(req, res, serverBase);
+    return;
+  }
+
+  if (req.url && req.url.startsWith('/redvelvet-nickname-search?')) {
+    await handleRedvelvetNicknameSearch(req, res, serverBase);
     return;
   }
 
