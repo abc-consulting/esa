@@ -56,6 +56,7 @@ async function handleRedvelvetTagProfiles(req, res, serverBase) {
 
   try {
     const resolvedTagUrl = await resolveRedvelvetTagUrl(tag, tagUrl);
+    console.log(`[RV DEBUG] tag-profiles: tag="${tag}" resolved URL=${resolvedTagUrl || 'NOT FOUND'}`);
     if (!resolvedTagUrl) {
       send(res, 200, JSON.stringify({
         tag,
@@ -72,11 +73,13 @@ async function handleRedvelvetTagProfiles(req, res, serverBase) {
     }
 
     const profiles = await fetchRedvelvetProfilesWithPostback(resolvedTagUrl);
+    console.log(`[RV DEBUG] tag-profiles: fetched ${profiles.length} profiles (before filter)`);
     const [areaSet, areaMap] = await Promise.all([
       getAreaSetForCityBucket(cityBucket),
       buildRedvelvetAreaHashMap(),
     ]);
     const filteredProfiles = filterProfilesByCityBucket(profiles, areaSet, areaMap);
+    console.log(`[RV DEBUG] tag-profiles: ${filteredProfiles.length} profiles after cityBucket="${cityBucket}" filter`);
 
     // Merge any local overrides for this tag
     const overrides = loadTagOverrides();

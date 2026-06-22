@@ -3,7 +3,7 @@
 const { fetchText, send } = require('../utils/http');
 const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html');
 const { normalizeAreaName } = require('../utils/normalize');
-const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS } = require('../constants');
+const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS, REQUEST_TIMEOUT_MS, POSTBACK_TIMEOUT_MS } = require('../constants');
 const { URL } = require('url');
 const { groupProfilesByPhone } = require('../utils/groups');
 
@@ -219,10 +219,12 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
     });
   };
 
-  const firstHtml = await fetch(startUrl, {
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-  }).then((r) => r.text());
+  // Use fetchText for the initial GET so we get the same timeout + redirect handling
+  console.log(`[RV DEBUG] fetchRedvelvetProfilesWithPostback: GET ${startUrl}`);
+  const firstHtml = await fetchText(startUrl);
+  console.log(`[RV DEBUG] Initial GET done. HTML length: ${firstHtml.length}. Snippet: ${firstHtml.slice(0, 200).replace(/\s+/g, ' ')}`);
   pushProfilesFromHtml(firstHtml);
+  console.log(`[RV DEBUG] After page 1: ${byUid.size} profiles`);
 
   const NEXT_BUTTON_SUFFIX = /DataPager\d*\$ctl02\$ctl00$/i;
   const MAX_POSTBACK_PAGES = 50;
@@ -241,6 +243,9 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
     body.set('__EVENTTARGET', target);
     body.set('__EVENTARGUMENT', '');
 
+    console.log(`[RV DEBUG] Postback page ${traversed}: target=${target}`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), POSTBACK_TIMEOUT_MS);
     let response;
     try {
       response = await fetch(startUrl, {
@@ -250,19 +255,26 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
         body: body.toString(),
+        signal: controller.signal,
       });
-    } catch {
+    } catch (err) {
+      console.log(`[RV DEBUG] Postback page ${traversed} fetch error: ${err.message}`);
+      clearTimeout(timer);
       break;
     }
+    clearTimeout(timer);
 
+    console.log(`[RV DEBUG] Postback page ${traversed}: HTTP ${response.status}`);
     if (!response.ok) break;
     const html = await response.text();
     if (!html) break;
 
     pushProfilesFromHtml(html);
+    console.log(`[RV DEBUG] After page ${traversed + 1}: ${byUid.size} profiles total`);
     currentHtml = html;
   }
 
+  console.log(`[RV DEBUG] fetchRedvelvetProfilesWithPostback done: ${byUid.size} total profiles from ${startUrl}`);
   return Array.from(byUid.values());
 }
 
@@ -277,9 +289,11 @@ async function getRedvelvetAreaProfiles(areaName, preferredCityBucket = '2') {
 
   const areaMap = await buildRedvelvetAreaHashMap();
   const areaEntry = findAreaEntryByName(areaMap, normalizedArea, preferredCityBucket);
+  console.log(`[RV DEBUG] getRedvelvetAreaProfiles: area="${normalizedArea}" entry=${areaEntry ? JSON.stringify({ areaId: areaEntry.areaId, cityBucket: areaEntry.cityBucket, url: areaEntry.url }) : 'NOT FOUND'}`);
   if (!areaEntry) return { areaUrl: '', profiles: [] };
 
   const profiles = await fetchRedvelvetProfilesWithPostback(areaEntry.url);
+  console.log(`[RV DEBUG] getRedvelvetAreaProfiles: got ${profiles.length} profiles for "${normalizedArea}"`);
   areaProfileListCache.set(normalizedArea, { profiles, areaUrl: areaEntry.url, fetchedAt: Date.now() });
   return { areaUrl: areaEntry.url, profiles };
 }

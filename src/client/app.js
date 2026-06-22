@@ -18,7 +18,7 @@ import {
   fetchRedvelvetProfilesByNickname as fetchRedvelvetProfilesByNicknameService,
   fetchRedvelvetProfilesByArea as fetchRedvelvetProfilesByAreaService,
 } from './modules/providers/redvelvet-service.js';
-import { debounce } from './modules/common-utils.js';
+import { debounce, flattenWithPhoneGroups } from './modules/common-utils.js';
 import {
   initFavorites,
   loadFavorites,
@@ -539,22 +539,40 @@ async function fetchImagesFromProfile(item) {
     });
   }
 
-  // Auto-suggest: check if any cached profile shares the same phone
+  // Auto-suggest: check if any cached profile or phone-group peer shares the same phone
   if (data.profile?.phone) {
     const myPhone = normalizePhone(data.profile.phone);
     const myKey = `${data.profile.provider}:${data.profile.uid}`;
-    if (myPhone.length >= 7) {
+
+    const alreadyLinkedWith = (p) => {
+      const ga = findGroupForProfile(data.profile.provider, data.profile.uid);
+      const gb = findGroupForProfile(p.provider, p.uid);
+      return ga && gb && ga.id === gb.id;
+    };
+
+    let suggested = false;
+
+    // Check profiles in the same phone group (known at search time, no extra fetch needed)
+    if (!suggested && item._phoneGroup) {
+      for (const p of profileLinks) {
+        if (!p.uid || p._phoneGroup !== item._phoneGroup) continue;
+        const otherKey = `${p.provider}:${p.uid}`;
+        if (otherKey === myKey) continue;
+        const pairKey = [myKey, otherKey].sort().join('|');
+        if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(p)) continue;
+        showPhoneSuggestion(data.profile, p, pairKey);
+        suggested = true;
+        break;
+      }
+    }
+
+    // Fallback: check detailCache for profiles opened in a previous search
+    if (!suggested && myPhone.length >= 7) {
       for (const [key, cached] of detailCache) {
         if (key === myKey) continue;
         if (normalizePhone(cached.phone) !== myPhone) continue;
         const pairKey = [myKey, key].sort().join('|');
-        if (dismissedSuggestions.has(pairKey)) continue;
-        const alreadyLinked = (() => {
-          const ga = findGroupForProfile(data.profile.provider, data.profile.uid);
-          const gb = findGroupForProfile(cached.provider, cached.uid);
-          return ga && gb && ga.id === gb.id;
-        })();
-        if (alreadyLinked) continue;
+        if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(cached)) continue;
         showPhoneSuggestion(data.profile, cached, pairKey);
         break;
       }
@@ -745,7 +763,7 @@ async function runRedvelvetSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = (data.groups || []).flatMap(g => g.profiles || []);
+    profileLinks = flattenWithPhoneGroups(data.groups);
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
@@ -785,7 +803,7 @@ async function runEsaSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = (data.groups || []).flatMap(g => g.profiles || []);
+    profileLinks = flattenWithPhoneGroups(data.groups);
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
@@ -880,6 +898,7 @@ function confirmLink(profileA, profileB) {
 }
 
 // ─── RENDERING ────────────────────────────────────────────────────────────
+
 
 function cardClickHandler(item) {
   fetchImagesFromProfile(item);
