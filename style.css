@@ -134,13 +134,35 @@ body {
 
 .tag-option:hover { background: #1a2a4a; }
 
-.tag-option input[type="checkbox"] {
-  accent-color: #c084fc;
+.tag-checkbox {
   flex: 0 0 14px;
   width: 14px;
   min-width: 14px;
   height: 14px;
-  cursor: pointer;
+  border: 1.5px solid #4a4a6a;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  line-height: 1;
+  color: #fff;
+  background: transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.tag-option[data-state="included"] .tag-checkbox {
+  background: #7c3aed;
+  border-color: #c084fc;
+}
+
+.tag-option[data-state="excluded"] .tag-checkbox {
+  background: #be123c;
+  border-color: #f43f5e;
+}
+
+.tag-option[data-state="excluded"] {
+  color: #f87171;
 }
 
 #status {
@@ -292,6 +314,11 @@ body {
 }
 
 .filter-chip-remove:hover { background: rgba(255,255,255,0.35); }
+
+.filter-chip--exclude {
+  background: #be123c;
+  border-color: #f43f5e;
+}
 
 #favorites-details {
   max-width: 1200px;

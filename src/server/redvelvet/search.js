@@ -1,0 +1,172 @@
+'use strict';
+
+const { send } = require('../utils/http');
+const { CACHE_TTL_MS } = require('../constants');
+const { getRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap } = require('./areas');
+const { fetchRedvelvetProfilesWithPostback } = require('./profiles');
+const { resolveRedvelvetTagUrl } = require('./tags');
+const { fetchProfileAgeAndBust } = require('./profile-details');
+
+const tagProfileCache = new Map(); // tag label → { profiles, fetchedAt }
+
+const CUP_INDEX = { A: 1, B: 2, C: 3, D: 4, DD: 5 };
+
+function parseBust(str) {
+  const m = String(str || '').trim().match(/^(\d+)\s*(A|B|C|DD|D)$/i);
+  if (!m) return null;
+  return { band: parseInt(m[1]), cup: m[2].toUpperCase() };
+}
+
+function bustVolumeGroup(band, cup) {
+  const idx = CUP_INDEX[String(cup).toUpperCase()];
+  return idx ? (band / 2) + idx : null;
+}
+
+async function fetchTagProfiles(tag, cityBucket) {
+  const cacheKey = `${tag}:${cityBucket}`;
+  const cached = tagProfileCache.get(cacheKey);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.profiles;
+
+  const tagUrl = await resolveRedvelvetTagUrl(tag, '');
+  if (!tagUrl) return [];
+  const profiles = await fetchRedvelvetProfilesWithPostback(tagUrl);
+  const [areaSet, areaMap] = await Promise.all([
+    getAreaSetForCityBucket(cityBucket),
+    buildRedvelvetAreaHashMap(),
+  ]);
+  const filtered = filterProfilesByCityBucket(profiles, areaSet, areaMap);
+  tagProfileCache.set(cacheKey, { profiles: filtered, fetchedAt: Date.now() });
+  return filtered;
+}
+
+async function pLimit(concurrency, tasks) {
+  const results = [];
+  let i = 0;
+  async function worker() {
+    while (i < tasks.length) {
+      const idx = i++;
+      results[idx] = await tasks[idx]();
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
+  return results;
+}
+
+async function handleRedvelvetSearch(req, res) {
+  let body;
+  try {
+    const chunks = [];
+    await new Promise((resolve, reject) => {
+      req.on('data', c => chunks.push(c));
+      req.on('end', resolve);
+      req.on('error', reject);
+    });
+    body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    send(res, 400, JSON.stringify({ error: 'Invalid JSON body' }), { 'Content-Type': 'application/json; charset=utf-8' });
+    return;
+  }
+
+  const cityBucket = String(body.cityBucket || '2');
+  const includedAreas = Array.isArray(body.areas?.included) ? body.areas.included.filter(Boolean) : [];
+  const excludedAreas = Array.isArray(body.areas?.excluded) ? body.areas.excluded.filter(Boolean) : [];
+  const includedTags  = Array.isArray(body.tags?.included)  ? body.tags.included.filter(Boolean)  : [];
+  const excludedTags  = Array.isArray(body.tags?.excluded)  ? body.tags.excluded.filter(Boolean)  : [];
+  const ageMin  = body.age?.min  ? Number(body.age.min)  : null;
+  const ageMax  = body.age?.max  ? Number(body.age.max)  : null;
+  const bustBand = body.bust?.band ? parseInt(body.bust.band) : null;
+  const bustCup  = body.bust?.cup  ? String(body.bust.cup).toUpperCase() : null;
+  const bustMin  = body.bust?.range?.min != null ? Number(body.bust.range.min) : null;
+  const bustMax  = body.bust?.range?.max != null ? Number(body.bust.range.max) : null;
+
+  const hasIncludes = includedAreas.length > 0 || includedTags.length > 0;
+  if (!hasIncludes) {
+    send(res, 200, JSON.stringify({ count: 0, profiles: [] }), { 'Content-Type': 'application/json; charset=utf-8' });
+    return;
+  }
+
+  try {
+    // Fetch included area and tag profiles in parallel
+    const [areaResults, tagResults] = await Promise.all([
+      Promise.all(includedAreas.map(a => getRedvelvetAreaProfiles(a, cityBucket).then(r => r.profiles).catch(() => []))),
+      Promise.all(includedTags.map(t => fetchTagProfiles(t, cityBucket).catch(() => []))),
+    ]);
+
+    // Build UID sets for intersection/union
+    const areaProfileMaps = areaResults.map(profiles => new Map(profiles.map(p => [p.uid, p])));
+    const tagProfileMaps  = tagResults.map(profiles => new Map(profiles.map(p => [p.uid, p])));
+
+    // Merge all profile objects (areas override tags for richer data)
+    const allObjects = new Map();
+    for (const m of tagProfileMaps)  for (const [uid, p] of m) allObjects.set(uid, p);
+    for (const m of areaProfileMaps) for (const [uid, p] of m) allObjects.set(uid, p);
+
+    // Area union
+    let areaUids = null;
+    if (areaProfileMaps.length > 0) {
+      areaUids = new Set();
+      for (const m of areaProfileMaps) for (const uid of m.keys()) areaUids.add(uid);
+    }
+
+    // Tag intersection
+    let tagUids = null;
+    if (tagProfileMaps.length > 0) {
+      const sets = tagProfileMaps.map(m => new Set(m.keys()));
+      tagUids = sets.reduce((acc, set) => new Set([...acc].filter(uid => set.has(uid))), sets[0]);
+    }
+
+    let finalUids;
+    if (tagUids && areaUids) {
+      finalUids = new Set([...tagUids].filter(uid => areaUids.has(uid)));
+    } else {
+      finalUids = tagUids || areaUids;
+    }
+
+    // Fetch excluded profiles and subtract
+    const [excludedAreaResults, excludedTagResults] = await Promise.all([
+      Promise.all(excludedAreas.map(a => getRedvelvetAreaProfiles(a, cityBucket).then(r => r.profiles.map(p => p.uid)).catch(() => []))),
+      Promise.all(excludedTags.map(t => fetchTagProfiles(t, cityBucket).then(ps => ps.map(p => p.uid)).catch(() => []))),
+    ]);
+    for (const uids of [...excludedAreaResults, ...excludedTagResults]) {
+      for (const uid of uids) finalUids.delete(uid);
+    }
+
+    let profiles = [...finalUids].map(uid => allObjects.get(uid)).filter(Boolean);
+
+    // Age/bust filtering — fetch detail pages if needed
+    const needsDetail = ageMin !== null || ageMax !== null || bustBand !== null || bustCup !== null || bustMin !== null || bustMax !== null;
+    if (needsDetail && profiles.length > 0) {
+      const detailTasks = profiles.map(p => () => fetchProfileAgeAndBust(p.uid));
+      const details = await pLimit(10, detailTasks);
+      profiles = profiles.filter((p, i) => {
+        const d = details[i];
+        if (!d) return true; // no detail fetched — include rather than drop
+        if (ageMin !== null && Number(d.age) < ageMin) return false;
+        if (ageMax !== null && Number(d.age) > ageMax) return false;
+        const parsed = parseBust(d.bust);
+        if (parsed) {
+          const vol = bustVolumeGroup(parsed.band, parsed.cup);
+          if (bustMin !== null && vol < bustMin) return false;
+          if (bustMax !== null && vol > bustMax) return false;
+          if (bustBand && bustCup) {
+            if (vol !== bustVolumeGroup(bustBand, bustCup)) return false;
+          } else if (bustCup) {
+            if (parsed.cup !== bustCup) return false;
+          } else if (bustBand) {
+            if (parsed.band !== bustBand) return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    send(res, 200, JSON.stringify({ count: profiles.length, profiles }), {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+    });
+  } catch (err) {
+    send(res, 502, JSON.stringify({ error: err.message }), { 'Content-Type': 'application/json; charset=utf-8' });
+  }
+}
+
+module.exports = { handleRedvelvetSearch };

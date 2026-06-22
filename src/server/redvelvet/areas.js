@@ -7,6 +7,7 @@ const { URL } = require('url');
 
 let areaMapCache = null;
 let areaMapCacheTime = 0;
+const areaProfileListCache = new Map(); // normalizedAreaName → { profiles, areaUrl, fetchedAt }
 
 async function buildRedvelvetAreaHashMap() {
   if (areaMapCache && Date.now() - areaMapCacheTime < AREA_MAP_CACHE_TTL_MS) {
@@ -201,12 +202,18 @@ async function getRedvelvetAreaProfiles(areaName, preferredCityBucket = '2') {
   const normalizedArea = normalizeAreaName(areaName);
   if (!normalizedArea) return { areaUrl: '', profiles: [] };
 
+  const cached = areaProfileListCache.get(normalizedArea);
+  if (cached && Date.now() - cached.fetchedAt < AREA_MAP_CACHE_TTL_MS) {
+    return { areaUrl: cached.areaUrl, profiles: cached.profiles };
+  }
+
   const areaMap = await buildRedvelvetAreaHashMap();
   const areaEntry = findAreaEntryByName(areaMap, normalizedArea, preferredCityBucket);
   if (!areaEntry) return { areaUrl: '', profiles: [] };
 
   const html = await fetchText(areaEntry.url);
   const profiles = parseRedvelvetAreaProfiles(html);
+  areaProfileListCache.set(normalizedArea, { profiles, areaUrl: areaEntry.url, fetchedAt: Date.now() });
   return { areaUrl: areaEntry.url, profiles };
 }
 

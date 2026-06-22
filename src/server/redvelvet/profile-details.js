@@ -4,10 +4,13 @@ const { send } = require('../utils/http');
 const { decodeHtmlEntities, stripTags } = require('../utils/html');
 const { findAreaEntryByName, buildRedvelvetAreaHashMap } = require('./areas');
 const { getSessionCookie, clearSessionCookie } = require('./auth');
-const { REQUEST_TIMEOUT_MS } = require('../constants');
+const { REQUEST_TIMEOUT_MS, CACHE_TTL_MS } = require('../constants');
 const { URL } = require('url');
 
 const REDVELVET_BASE = 'https://redvelvet.co.za';
+
+const metaCache   = new Map(); // uid → { data: parsed meta, fetchedAt }
+const detailCache = new Map(); // uid → { data: { profile, directImages, videos }, fetchedAt }
 
 function toAbsolute(src, base = REDVELVET_BASE) {
   if (!src) return '';
@@ -157,32 +160,20 @@ async function fetchAuthenticated(url, returnFinalUrl = false) {
   return returnFinalUrl ? { html, finalUrl } : html;
 }
 
-async function fetchRedvelvetProfileDetails(profileUrl) {
+async function fetchProfileMeta(uid) {
+  const cached = metaCache.get(uid);
+  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+
+  const profileUrl = `${REDVELVET_BASE}/escorts/escorts_details.aspx?userid=${uid}`;
   const { html, finalUrl } = await fetchAuthenticated(profileUrl, true);
   const parsed = parseProfileDetails(html, finalUrl);
 
-  // Fetch secondary pages concurrently with area resolution
-  const [areaEntry, videosFromPage, rawImages] = await Promise.all([
-    parsed.area
-      ? buildRedvelvetAreaHashMap()
-          .then(m => findAreaEntryByName(m, parsed.area, '2'))
-          .catch(() => null)
-      : Promise.resolve(null),
-    parsed.videoPageUrl
-      ? fetchAuthenticated(parsed.videoPageUrl)
-          .then(vhtml => parseVideoPage(vhtml))
-          .catch(() => [])
-      : Promise.resolve([]),
-    parsed.rawPageUrl
-      ? fetchAuthenticated(parsed.rawPageUrl)
-          .then(rhtml => parseRawPage(rhtml))
-          .catch(() => [])
-      : Promise.resolve([]),
-  ]);
+  const areaEntry = parsed.area
+    ? await buildRedvelvetAreaHashMap().then(m => findAreaEntryByName(m, parsed.area, '2')).catch(() => null)
+    : null;
 
-  const profile = {
-    provider: 'redvelvet',
-    uid: parsed.uid,
+  const data = {
+    uid: parsed.uid || uid,
     name: parsed.name,
     area: parsed.area,
     areaUrl: areaEntry?.url || '',
@@ -192,16 +183,67 @@ async function fetchRedvelvetProfileDetails(profileUrl) {
     age: parsed.age,
     bust: parsed.bust,
     tags: parsed.tags,
+    // store for use by fetchRedvelvetProfileDetails
+    _parsed: { images: parsed.images, videoPageUrl: parsed.videoPageUrl, rawPageUrl: parsed.rawPageUrl },
   };
 
-  // Merge raw images, deduplicating against profile images
+  metaCache.set(String(uid), { data, fetchedAt: Date.now() });
+  return data;
+}
+
+async function fetchRedvelvetProfileDetails(profileUrl) {
+  // Extract uid from URL so we can check/store caches by uid
+  const uidMatch = profileUrl.match(/\/(\d+)(?:[/?#]|$)/) || profileUrl.match(/userid=(\d+)/i);
+  const uid = uidMatch ? uidMatch[1] : null;
+
+  if (uid) {
+    const cached = detailCache.get(uid);
+    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+  }
+
+  // Use meta cache if available to avoid re-fetching the profile page
+  let meta;
+  if (uid) {
+    try { meta = await fetchProfileMeta(uid); } catch { meta = null; }
+  }
+
+  let parsed, finalUrl, areaEntry;
+  if (meta) {
+    parsed = meta._parsed;
+    finalUrl = meta.profileUrl;
+    areaEntry = meta.areaUrl ? { url: meta.areaUrl } : null;
+  } else {
+    const result = await fetchAuthenticated(profileUrl, true);
+    finalUrl = result.finalUrl;
+    parsed = parseProfileDetails(result.html, finalUrl);
+    areaEntry = parsed.area
+      ? await buildRedvelvetAreaHashMap().then(m => findAreaEntryByName(m, parsed.area, '2')).catch(() => null)
+      : null;
+  }
+
+  // Fetch images and videos (on-demand only, not during search)
+  const [videosFromPage, rawImages] = await Promise.all([
+    parsed.videoPageUrl
+      ? fetchAuthenticated(parsed.videoPageUrl).then(vhtml => parseVideoPage(vhtml)).catch(() => [])
+      : Promise.resolve([]),
+    parsed.rawPageUrl
+      ? fetchAuthenticated(parsed.rawPageUrl).then(rhtml => parseRawPage(rhtml)).catch(() => [])
+      : Promise.resolve([]),
+  ]);
+
+  const profile = meta
+    ? { provider: 'redvelvet', uid: meta.uid, name: meta.name, area: meta.area, areaUrl: meta.areaUrl, thumbUrl: meta.thumbUrl, profileUrl: finalUrl, phone: meta.phone, age: meta.age, bust: meta.bust, tags: meta.tags }
+    : { provider: 'redvelvet', uid: parsed.uid, name: parsed.name, area: parsed.area, areaUrl: areaEntry?.url || '', thumbUrl: parsed.images[0] || '', profileUrl: finalUrl, phone: parsed.phone, age: parsed.age, bust: parsed.bust, tags: parsed.tags };
+
   const seenImages = new Set(parsed.images);
   const allImages = [...parsed.images];
   for (const url of rawImages) {
     if (!seenImages.has(url)) { seenImages.add(url); allImages.push(url); }
   }
 
-  return { profile, directImages: allImages, videos: videosFromPage };
+  const result = { profile, directImages: allImages, videos: videosFromPage };
+  if (uid) detailCache.set(uid, { data: result, fetchedAt: Date.now() });
+  return result;
 }
 
 async function handleRedvelvetProfileDetails(req, res, serverBase) {
@@ -230,4 +272,13 @@ async function handleRedvelvetProfileDetails(req, res, serverBase) {
   }
 }
 
-module.exports = { fetchRedvelvetProfileDetails, handleRedvelvetProfileDetails };
+async function fetchProfileAgeAndBust(uid) {
+  try {
+    const meta = await fetchProfileMeta(uid);
+    return { age: meta.age, bust: meta.bust };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { fetchProfileMeta, fetchRedvelvetProfileDetails, handleRedvelvetProfileDetails, fetchProfileAgeAndBust };

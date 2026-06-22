@@ -14,6 +14,7 @@ const {
 const { handleRedvelvetTags, buildRedvelvetTagHashMap } = require('./redvelvet/tags');
 const { handleRedvelvetProfileLookup, handleRedvelvetTagProfiles } = require('./redvelvet/profiles');
 const { handleRedvelvetProfileDetails } = require('./redvelvet/profile-details');
+const { handleRedvelvetSearch } = require('./redvelvet/search');
 const { getSessionCookie } = require('./redvelvet/auth');
 
 const server = http.createServer(async (req, res) => {
@@ -22,7 +23,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET,HEAD,OPTIONS',
+      'Access-Control-Allow-Methods': 'GET,HEAD,POST,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type',
     });
     res.end();
@@ -72,6 +73,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.url && req.url.startsWith('/redvelvet-tag-profiles?')) {
     await handleRedvelvetTagProfiles(req, res, serverBase);
+    return;
+  }
+
+  if (req.url === '/redvelvet-search' && req.method === 'POST') {
+    await handleRedvelvetSearch(req, res, serverBase);
     return;
   }
 
