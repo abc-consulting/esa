@@ -221,7 +221,13 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
 
   // Use fetchText for the initial GET so we get the same timeout + redirect handling
   console.log(`[RV DEBUG] fetchRedvelvetProfilesWithPostback: GET ${startUrl}`);
-  const firstHtml = await fetchText(startUrl);
+  let firstHtml;
+  try {
+    firstHtml = await fetchText(startUrl);
+  } catch (err) {
+    console.error(`[RV DEBUG] fetchRedvelvetProfilesWithPostback: GET failed: ${err.message}`);
+    return [];
+  }
   console.log(`[RV DEBUG] Initial GET done. HTML length: ${firstHtml.length}. Snippet: ${firstHtml.slice(0, 200).replace(/\s+/g, ' ')}`);
   pushProfilesFromHtml(firstHtml);
   console.log(`[RV DEBUG] After page 1: ${byUid.size} profiles`);
