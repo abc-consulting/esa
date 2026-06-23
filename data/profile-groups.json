@@ -251,5 +251,30 @@
       }
     ],
     "createdAt": 1782165499948
+  },
+  {
+    "id": "f583ff9f-5dad-4cb9-b0bb-9f6d25dc9fd0",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "63730",
+        "name": "Sage",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/63730180607733.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Sage/Tyger%20Valley/63730",
+        "phone": "064 077 2161"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "77665",
+        "name": "Lady Katt",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/77665220607606.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Lady%20Katt/Tyger%20Valley/77665",
+        "phone": "064 077 2161"
+      }
+    ],
+    "createdAt": 1782192036378,
+    "linkType": "venue"
   }
 ]
