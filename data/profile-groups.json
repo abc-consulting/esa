@@ -73,7 +73,12 @@
         "profileUrl": "https://www.esa.co.za/escorts/viewEscort.php?uid=184528"
       }
     ],
-    "createdAt": 1782147712135
+    "createdAt": 1782147712135,
+    "pairs": {
+      "esa:146279|esa:184093": "venue",
+      "esa:146279|esa:184528": "venue",
+      "esa:184093|esa:184528": "venue"
+    }
   },
   {
     "id": "fcd1b62e-bccc-49a1-957a-1e09b66c235a",
@@ -171,7 +176,10 @@
         "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Santana/Century%20City/27900"
       }
     ],
-    "createdAt": 1782149606827
+    "createdAt": 1782149606827,
+    "pairs": {
+      "esa:101779|redvelvet:27900": "profile"
+    }
   },
   {
     "id": "48f9016e-f465-44d1-9a7f-802dc45b547d",
@@ -274,7 +282,18 @@
         "phone": "064 937 7761"
       }
     ],
-    "createdAt": 1782165499948
+    "createdAt": 1782165499948,
+    "pairs": {
+      "redvelvet:78103|redvelvet:79262": "profile",
+      "redvelvet:78103|redvelvet:83233": "profile",
+      "esa:144875|redvelvet:78103": "profile",
+      "esa:146848|redvelvet:78103": "profile",
+      "redvelvet:79262|redvelvet:83233": "unknown",
+      "esa:144875|redvelvet:79262": "profile",
+      "esa:146848|redvelvet:79262": "profile",
+      "esa:146848|redvelvet:83233": "profile",
+      "esa:144875|esa:146848": "profile"
+    }
   },
   {
     "id": "f583ff9f-5dad-4cb9-b0bb-9f6d25dc9fd0",
@@ -300,5 +319,33 @@
     ],
     "createdAt": 1782192036378,
     "linkType": "venue"
+  },
+  {
+    "id": "a539ac6e-4ada-4ae5-a325-6acffe6bed2f",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "80712",
+        "name": "Amelia",
+        "area": "Goodwood",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/80712040611918.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Amelia/Goodwood/80712",
+        "phone": "063 935 9834"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "80713",
+        "name": "Irene",
+        "area": "Goodwood",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/80713040611385.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Irene/Goodwood/80713",
+        "phone": "063 935 9834"
+      }
+    ],
+    "createdAt": 1782252609472,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:80712|redvelvet:80713": "venue"
+    }
   }
 ]
