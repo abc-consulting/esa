@@ -561,7 +561,7 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
     if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
   }
 
-  const onAreaClickRv = p => fetchRedvelvetProfilesByArea(p.areaUrl || p.area);
+  const onAreaClickRv = p => fetchRedvelvetProfilesByArea(p.area);
   const onAreaClickEsa = p => {
     activeAreas.clear(); excludedAreas.clear();
     activeAreas.add(p.area);
@@ -763,6 +763,7 @@ async function fetchRedvelvetProfilesByNickname(nickname) {
 }
 
 async function fetchRedvelvetProfilesByArea(area) {
+  exitProfileView();
   clearImages();
   clearProfiles();
   clearProfileDetails();
@@ -1574,7 +1575,7 @@ function renderMergedProfileDetails(group, clickedItem) {
       skipClear: true,
       onAreaClick: p => {
         if (p.provider === 'redvelvet') {
-          fetchRedvelvetProfilesByArea(p.areaUrl || p.area);
+          fetchRedvelvetProfilesByArea(p.area);
         } else {
           activeAreas.clear(); excludedAreas.clear();
           activeAreas.add(p.area);

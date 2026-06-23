@@ -8,9 +8,9 @@ const { handleImageRelay } = require('./middleware/image-relay');
 const {
   handleRedvelvetAreaLookup,
   handleRedvelvetAreaProfiles,
-  handleRedvelvetAreas,
   buildRedvelvetAreaHashMap,
 } = require('./redvelvet/areas');
+const { handleRedvelvetAreas } = require('./redvelvet/areas-list');
 const { handleRedvelvetTags, buildRedvelvetTagHashMap } = require('./redvelvet/tags');
 const { handleRedvelvetProfileLookup, handleRedvelvetTagProfiles } = require('./redvelvet/profiles');
 const { handleRedvelvetProfileDetails } = require('./redvelvet/profile-details');
@@ -19,7 +19,8 @@ const { handleRedvelvetNicknameSearch } = require('./redvelvet/nickname-search')
 const { getSessionCookie } = require('./redvelvet/auth');
 const { handleEsaProfilesByNickname, handleEsaProfilesByArea } = require('./esa/profiles');
 const { handleEsaProfileDetails } = require('./esa/profile-details');
-const { handleEsaAreas, buildEsaAreaHashMap } = require('./esa/areas');
+const { buildEsaAreaHashMap } = require('./esa/areas');
+const { handleEsaAreas } = require('./esa/areas-list');
 const { handleEsaSearch } = require('./esa/search');
 const { handleGetProfileGroups, handleSaveProfileGroups } = require('./profile-groups');
 const { handleGetFavorites, handleSaveFavorites } = require('./favorites');

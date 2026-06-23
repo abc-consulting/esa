@@ -421,5 +421,4 @@ module.exports = {
   fetchRedvelvetProfilesWithPostback,
   handleRedvelvetAreaLookup,
   handleRedvelvetAreaProfiles,
-  handleRedvelvetAreas,
 };
