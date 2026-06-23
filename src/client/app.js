@@ -475,7 +475,7 @@ async function fetchSingleProfileData(item) {
   }
 }
 
-function suggestPhoneLinks(item, profileForPhone) {
+async function suggestPhoneLinks(item, profileForPhone) {
   if (!profileForPhone?.phone) return;
   const myKey = `${profileForPhone.provider}:${profileForPhone.uid}`;
   const seenKeys = new Set([myKey]);
@@ -507,6 +507,30 @@ function suggestPhoneLinks(item, profileForPhone) {
       if (dismissedSuggestions.has(pairKey) || inSameGroup(cached)) continue;
       seenKeys.add(key);
       peers.push(cached);
+    }
+
+    if (profileForPhone.name) {
+      const otherProvider = profileForPhone.provider === 'redvelvet' ? 'esa' : 'redvelvet';
+      try {
+        const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+        let results = [];
+        if (otherProvider === 'esa') {
+          const res = await fetch(`${relayBase}/esa-profiles?nickname=${encodeURIComponent(profileForPhone.name)}`);
+          if (res.ok) results = (await res.json()).profiles || [];
+        } else {
+          const res = await fetch(`${relayBase}/redvelvet-nickname-search?nickname=${encodeURIComponent(profileForPhone.name)}&cityBucket=2`);
+          if (res.ok) results = (await res.json()).profiles || [];
+        }
+        for (const p of results) {
+          const k = `${p.provider}:${p.uid}`;
+          if (seenKeys.has(k)) continue;
+          if (normalizePhone(p.phone) !== myPhone) continue;
+          const pairKey = [myKey, k].sort().join('|');
+          if (dismissedSuggestions.has(pairKey) || inSameGroup(p)) continue;
+          seenKeys.add(k);
+          peers.push(p);
+        }
+      } catch { /* non-fatal */ }
     }
   }
 
