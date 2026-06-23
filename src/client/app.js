@@ -34,6 +34,7 @@ import {
   removeFromGroup,
   mergeGroups,
   getGroupMembers,
+  setGroupLinkType,
 } from './modules/profile-groups.js';
 
 const {
@@ -539,10 +540,12 @@ async function fetchImagesFromProfile(item) {
     });
   }
 
-  // Auto-suggest: check if any cached profile or phone-group peer shares the same phone
+  // Auto-suggest: collect all phone-group peers and show link modal
   if (data.profile?.phone) {
     const myPhone = normalizePhone(data.profile.phone);
     const myKey = `${data.profile.provider}:${data.profile.uid}`;
+    const seenKeys = new Set([myKey]);
+    const peers = [];
 
     const alreadyLinkedWith = (p) => {
       const ga = findGroupForProfile(data.profile.provider, data.profile.uid);
@@ -550,33 +553,32 @@ async function fetchImagesFromProfile(item) {
       return ga && gb && ga.id === gb.id;
     };
 
-    let suggested = false;
-
-    // Check profiles in the same phone group (known at search time, no extra fetch needed)
-    if (!suggested && item._phoneGroup) {
+    // Profiles sharing _phoneGroup (known from search results)
+    if (item._phoneGroup) {
       for (const p of profileLinks) {
         if (!p.uid || p._phoneGroup !== item._phoneGroup) continue;
-        const otherKey = `${p.provider}:${p.uid}`;
-        if (otherKey === myKey) continue;
-        const pairKey = [myKey, otherKey].sort().join('|');
+        const k = `${p.provider}:${p.uid}`;
+        if (seenKeys.has(k)) continue;
+        const pairKey = [myKey, k].sort().join('|');
         if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(p)) continue;
-        showPhoneSuggestion(data.profile, p, pairKey);
-        suggested = true;
-        break;
+        seenKeys.add(k);
+        peers.push(p);
       }
     }
 
-    // Fallback: check detailCache for profiles opened in a previous search
-    if (!suggested && myPhone.length >= 7) {
+    // Profiles from detailCache that share the same phone (cross-search)
+    if (myPhone.length >= 7) {
       for (const [key, cached] of detailCache) {
-        if (key === myKey) continue;
+        if (seenKeys.has(key)) continue;
         if (normalizePhone(cached.phone) !== myPhone) continue;
         const pairKey = [myKey, key].sort().join('|');
         if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(cached)) continue;
-        showPhoneSuggestion(data.profile, cached, pairKey);
-        break;
+        seenKeys.add(key);
+        peers.push(cached);
       }
     }
+
+    if (peers.length > 0) showPhoneLinkModal(data.profile, peers);
   }
 
   galleryImageUrls = data.images || [];
@@ -587,35 +589,120 @@ async function fetchImagesFromProfile(item) {
   setTimeout(() => renderImages(videos), (item.provider === 'redvelvet' || activeProvider === 'redvelvet') ? 300 : 500);
 }
 
-function showPhoneSuggestion(profileA, profileB, pairKey) {
-  const existing = profileDetailsContainer.querySelector('.link-suggestion-banner');
+const LINK_TYPES = ['profile', 'venue', 'unknown', 'unrelated'];
+const LINK_TYPE_LABELS = { profile: 'Same profile', venue: 'Venue', unknown: 'Unknown', unrelated: 'Unrelated' };
+
+function showPhoneLinkModal(currentProfile, peers) {
+  const existing = document.getElementById('phone-link-modal');
   if (existing) existing.remove();
 
-  const banner = document.createElement('div');
-  banner.className = 'link-suggestion-banner';
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  const myKey = `${currentProfile.provider}:${currentProfile.uid}`;
 
-  const msg = document.createElement('span');
-  const provB = profileB.provider === 'redvelvet' ? 'RV' : 'ESA';
-  msg.textContent = `${profileB.name} (${provB}) may be the same person — same phone number. Link them?`;
+  // Track selected link type per peer (keyed by provider:uid)
+  const peerTypes = new Map(peers.map(p => [`${p.provider}:${p.uid}`, 'unknown']));
 
-  const linkBtn = document.createElement('button');
-  linkBtn.className = 'suggestion-link-btn';
-  linkBtn.textContent = 'Link';
-  linkBtn.addEventListener('click', () => {
-    banner.remove();
-    confirmLink(profileA, profileB);
+  const overlay = document.createElement('div');
+  overlay.id = 'phone-link-modal';
+  overlay.className = 'phone-link-modal';
+
+  const box = document.createElement('div');
+  box.className = 'phone-link-modal-box';
+
+  const title = document.createElement('div');
+  title.className = 'phone-link-modal-title';
+  title.textContent = 'Same phone number detected';
+  box.appendChild(title);
+
+  const subtitle = document.createElement('div');
+  subtitle.className = 'phone-link-modal-subtitle';
+  subtitle.textContent = `${currentProfile.name}${currentProfile.phone ? ' · ' + currentProfile.phone : ''}`;
+  box.appendChild(subtitle);
+
+  const peerList = document.createElement('div');
+  peerList.className = 'phone-link-peer-list';
+
+  peers.forEach(peer => {
+    const peerKey = `${peer.provider}:${peer.uid}`;
+    const row = document.createElement('div');
+    row.className = 'phone-link-peer-row';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'phone-link-peer-thumb';
+    const thumbSrc = peer.thumbUrl && /^https?:\/\//i.test(peer.thumbUrl)
+      ? `${relayBase}/image?url=${encodeURIComponent(peer.thumbUrl)}`
+      : peer.thumbUrl || '';
+    thumb.src = thumbSrc || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect width="100%" height="100%" fill="%23334155"/></svg>';
+    thumb.alt = peer.name || '';
+
+    const info = document.createElement('div');
+    info.className = 'phone-link-peer-info';
+    const peerName = document.createElement('div');
+    peerName.className = 'phone-link-peer-name';
+    peerName.textContent = peer.name || `UID ${peer.uid}`;
+    const peerArea = document.createElement('div');
+    peerArea.className = 'phone-link-peer-area';
+    peerArea.textContent = peer.area || (peer.provider === 'redvelvet' ? 'RV' : 'ESA');
+    info.append(peerName, peerArea);
+
+    const badge = document.createElement('button');
+    badge.className = 'link-type-badge';
+    const updateBadge = () => {
+      const type = peerTypes.get(peerKey);
+      badge.textContent = LINK_TYPE_LABELS[type];
+      badge.dataset.type = type;
+    };
+    updateBadge();
+    badge.addEventListener('click', () => {
+      const cur = peerTypes.get(peerKey);
+      const next = LINK_TYPES[(LINK_TYPES.indexOf(cur) + 1) % LINK_TYPES.length];
+      peerTypes.set(peerKey, next);
+      updateBadge();
+    });
+
+    row.append(thumb, info, badge);
+    peerList.appendChild(row);
+  });
+  box.appendChild(peerList);
+
+  const footer = document.createElement('div');
+  footer.className = 'phone-link-modal-footer';
+
+  const confirmBtn = document.createElement('button');
+  confirmBtn.className = 'phone-link-confirm-btn';
+  confirmBtn.textContent = 'Confirm';
+  confirmBtn.addEventListener('click', () => {
+    overlay.remove();
+    peers.forEach(peer => {
+      const peerKey = `${peer.provider}:${peer.uid}`;
+      const type = peerTypes.get(peerKey);
+      const pairKey = [myKey, peerKey].sort().join('|');
+      if (type === 'unrelated') {
+        dismissedSuggestions.add(pairKey);
+      } else {
+        confirmLink(currentProfile, peer, type);
+      }
+    });
+    renderProfileCards();
   });
 
-  const dismissBtn = document.createElement('button');
-  dismissBtn.className = 'suggestion-dismiss-btn';
-  dismissBtn.textContent = 'Dismiss';
-  dismissBtn.addEventListener('click', () => {
-    dismissedSuggestions.add(pairKey);
-    banner.remove();
+  const dismissAllBtn = document.createElement('button');
+  dismissAllBtn.className = 'phone-link-dismiss-btn';
+  dismissAllBtn.textContent = 'Dismiss all';
+  dismissAllBtn.addEventListener('click', () => {
+    overlay.remove();
+    peers.forEach(peer => {
+      const peerKey = `${peer.provider}:${peer.uid}`;
+      dismissedSuggestions.add([myKey, peerKey].sort().join('|'));
+    });
   });
 
-  banner.append(msg, linkBtn, dismissBtn);
-  profileDetailsContainer.insertBefore(banner, profileDetailsContainer.firstChild);
+  footer.append(confirmBtn, dismissAllBtn);
+  box.appendChild(footer);
+  overlay.appendChild(box);
+
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
 }
 
 async function fetchProfilesByNickname(nickname) {
@@ -874,27 +961,30 @@ function enrichWithPhone(profile) {
   return cached?.phone ? { ...profile, phone: cached.phone } : profile;
 }
 
-function confirmLink(profileA, profileB) {
+function confirmLink(profileA, profileB, linkType = 'unknown') {
   const a = enrichWithPhone(profileA);
   const b = enrichWithPhone(profileB);
 
   const groupA = findGroupForProfile(a.provider, a.uid);
   const groupB = findGroupForProfile(b.provider, b.uid);
 
+  let groupId;
   if (groupA && groupB) {
     if (groupA.id !== groupB.id) mergeGroups(groupA.id, groupB.id);
+    groupId = groupA.id;
   } else if (groupA) {
     addToGroup(groupA.id, b);
+    groupId = groupA.id;
   } else if (groupB) {
     addToGroup(groupB.id, a);
+    groupId = groupB.id;
   } else {
-    createGroup(a, b);
+    groupId = createGroup(a, b, linkType);
   }
 
-  cancelLinkPickMode();
+  if (groupId && linkType !== 'unknown') setGroupLinkType(groupId, linkType);
 
-  // Re-open the merged view for profileA
-  fetchImagesFromProfile(profileA);
+  cancelLinkPickMode();
 }
 
 // ─── RENDERING ────────────────────────────────────────────────────────────
@@ -940,7 +1030,8 @@ function buildProfileCard(item, index, { onClickExtra, onProfileClick } = {}) {
   if (group) {
     const badge = document.createElement('span');
     badge.className = 'profile-card-linked';
-    badge.title = `Linked with ${group.members.length - 1} other profile${group.members.length > 2 ? 's' : ''}`;
+    const type = group.linkType || 'unknown';
+    badge.title = `Linked (${type}) with ${group.members.length - 1} other profile${group.members.length > 2 ? 's' : ''}`;
     badge.textContent = '🔗';
     wrapper.appendChild(badge);
   }
@@ -1144,7 +1235,8 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
     const g = findGroupForProfile(profile.provider, profile.uid);
     if (g) {
       const count = g.members.length;
-      linkBtn.textContent = `Linked (${count})`;
+      const type = g.linkType || 'unknown';
+      linkBtn.textContent = `Linked (${count}) · ${type}`;
       linkBtn.className = 'profile-link-btn is-linked';
       linkBtn.title = g.members.map(m => `${m.name} (${m.provider === 'redvelvet' ? 'RV' : 'ESA'})`).join(', ');
     } else {

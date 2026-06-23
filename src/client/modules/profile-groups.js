@@ -68,7 +68,7 @@ function findGroupForProfile(provider, uid) {
   return getGroups().find(g => g.members.some(m => profileKey(m.provider, m.uid) === key)) || null;
 }
 
-function createGroup(profileA, profileB) {
+function createGroup(profileA, profileB, linkType = 'unknown') {
   const groups = getGroups();
   const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
@@ -82,9 +82,17 @@ function createGroup(profileA, profileB) {
     profileUrl: p.profileUrl || '',
     phone: p.phone || '',
   });
-  groups.push({ id, members: [toMember(profileA), toMember(profileB)], createdAt: Date.now() });
+  groups.push({ id, members: [toMember(profileA), toMember(profileB)], createdAt: Date.now(), linkType });
   saveGroups(groups);
   return id;
+}
+
+function setGroupLinkType(groupId, linkType) {
+  const groups = getGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (!group) return;
+  group.linkType = linkType;
+  saveGroups(groups);
 }
 
 function addToGroup(groupId, profile) {
@@ -142,4 +150,5 @@ export {
   removeFromGroup,
   mergeGroups,
   getGroupMembers,
+  setGroupLinkType,
 };
