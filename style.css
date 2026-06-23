@@ -1163,6 +1163,23 @@ body {
   pointer-events: none;
 }
 
+.profile-card-same-number {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .profile-card {
   position: relative;
 }
@@ -1438,3 +1455,59 @@ body {
   cursor: pointer;
 }
 .merged-tab-unlink:hover { color: #f87171; border-color: #f87171; }
+
+.venue-section {
+  margin-bottom: 12px;
+}
+.venue-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+.venue-section-header:hover { background: #1e293b; color: #e2e8f0; }
+.venue-section-label { flex: 1; }
+.venue-section-chevron {
+  font-size: 1rem;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.venue-section-header.open .venue-section-chevron { transform: rotate(90deg); }
+.venue-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 0 0;
+}
+.venue-section-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: #cbd5e1;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+.venue-section-member:hover { background: #1e293b; color: #e2e8f0; }
+.venue-section-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid #475569;
+}

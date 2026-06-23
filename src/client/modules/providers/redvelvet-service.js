@@ -1,5 +1,4 @@
 import { IMAGE_RELAY_BASE_URL } from '../config.js';
-import { flattenWithPhoneGroups } from '../common-utils.js';
 
 export async function fetchRedvelvetProfilesByArea(area, deps) {
   const { setStatus } = deps;
@@ -10,7 +9,7 @@ export async function fetchRedvelvetProfilesByArea(area, deps) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     setStatus('');
-    return flattenWithPhoneGroups(data.groups);
+    return data.profiles || [];
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
     return [];
@@ -26,7 +25,7 @@ export async function fetchRedvelvetProfilesByNickname(nickname, deps) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     setStatus('');
-    return flattenWithPhoneGroups(data.groups);
+    return data.profiles || [];
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
     return [];

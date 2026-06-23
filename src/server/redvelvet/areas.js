@@ -5,7 +5,7 @@ const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html'
 const { normalizeAreaName } = require('../utils/normalize');
 const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS, REQUEST_TIMEOUT_MS, POSTBACK_TIMEOUT_MS } = require('../constants');
 const { URL } = require('url');
-const { groupProfilesByPhone } = require('../utils/groups');
+const { flattenWithSameNumber } = require('../utils/groups');
 
 let areaMapCache = null;
 let areaMapCacheTime = 0;
@@ -357,12 +357,12 @@ async function handleRedvelvetAreaProfiles(req, res, serverBase) {
 
   try {
     const result = await getRedvelvetAreaProfiles(rawName, cityBucket);
-    const groups = groupProfilesByPhone(result.profiles);
+    const flatProfiles = flattenWithSameNumber(result.profiles);
     send(res, 200, JSON.stringify({
       area: normalizeAreaName(rawName),
       areaUrl: result.areaUrl,
       count: result.profiles.length,
-      groups,
+      profiles: flatProfiles,
     }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'public, max-age=300',

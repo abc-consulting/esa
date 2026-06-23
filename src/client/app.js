@@ -18,7 +18,7 @@ import {
   fetchRedvelvetProfilesByNickname as fetchRedvelvetProfilesByNicknameService,
   fetchRedvelvetProfilesByArea as fetchRedvelvetProfilesByAreaService,
 } from './modules/providers/redvelvet-service.js';
-import { debounce, flattenWithPhoneGroups } from './modules/common-utils.js';
+import { debounce } from './modules/common-utils.js';
 import {
   initFavorites,
   loadFavorites,
@@ -35,6 +35,8 @@ import {
   mergeGroups,
   getGroupMembers,
   setGroupLinkType,
+  setPairLinkType,
+  getPairLinkType,
 } from './modules/profile-groups.js';
 
 const {
@@ -132,7 +134,7 @@ const SIZE_LEVELS = [
 
 async function ensureDetailCache(profiles) {
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
-  const missing = profiles.filter(p => p.provider === 'redvelvet' && !detailCache.has(p.uid));
+  const missing = profiles.filter(p => p.provider === 'redvelvet' && !detailCache.has(`${p.provider}:${p.uid}`));
   if (!missing.length) return;
   let done = 0;
   await Promise.all(missing.map(async p => {
@@ -140,7 +142,7 @@ async function ensureDetailCache(profiles) {
       const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(p.uid)}`);
       if (res.ok) {
         const data = await res.json();
-        if (data?.profile) detailCache.set(p.uid, data.profile);
+        if (data?.profile) detailCache.set(`${p.provider}:${p.uid}`, data.profile);
       }
     } catch { /* skip */ }
     done++;
@@ -449,6 +451,10 @@ async function doAreaSearch() {
 // ─── PROFILE FETCHING ─────────────────────────────────────────────────────
 
 async function fetchSingleProfileData(item) {
+  const cacheKey = `${item.provider}:${item.uid}`;
+  const cached = detailCache.get(cacheKey);
+  if (cached) return { profile: cached, images: cached.images || [], videos: cached.videos || [] };
+
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
   if (item.provider === 'redvelvet') {
     const uid = /^\d+$/.test(String(item.uid || ''))
@@ -459,36 +465,64 @@ async function fetchSingleProfileData(item) {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
+    if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
     return data;
   } else {
     const data = await fetchEsaImagesFromProfile(item.uid, { setStatus: () => {}, searchBtn: { disabled: false } });
     if (!data) throw new Error('Failed to fetch ESA profile.');
+    if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
     return data;
   }
 }
 
-async function fetchImagesFromProfile(item) {
-  const group = findGroupForProfile(item.provider, item.uid);
+function suggestPhoneLinks(item, profileForPhone) {
+  if (!profileForPhone?.phone) return;
+  const myKey = `${profileForPhone.provider}:${profileForPhone.uid}`;
+  const seenKeys = new Set([myKey]);
+  const peers = [];
+
+  const inSameGroup = (p) => {
+    const ga = findGroupForProfile(profileForPhone.provider, profileForPhone.uid);
+    const gb = findGroupForProfile(p.provider, p.uid);
+    return ga && gb && ga.id === gb.id;
+  };
+
+  for (const ref of (item.profiles_with_same_number || [])) {
+    const k = `${ref.provider}:${ref.uid}`;
+    if (seenKeys.has(k)) continue;
+    const pairKey = [myKey, k].sort().join('|');
+    if (dismissedSuggestions.has(pairKey)) continue;
+    const p = profileLinks.find(x => x.uid === ref.uid && x.provider === ref.provider) || ref;
+    if (inSameGroup(p)) continue;
+    seenKeys.add(k);
+    peers.push(p);
+  }
+
+  const myPhone = normalizePhone(profileForPhone.phone);
+  if (myPhone.length >= 7) {
+    for (const [key, cached] of detailCache) {
+      if (seenKeys.has(key)) continue;
+      if (normalizePhone(cached.phone) !== myPhone) continue;
+      const pairKey = [myKey, key].sort().join('|');
+      if (dismissedSuggestions.has(pairKey) || inSameGroup(cached)) continue;
+      seenKeys.add(key);
+      peers.push(cached);
+    }
+  }
+
+  if (peers.length > 0) showPhoneLinkModal(profileForPhone, peers);
+}
+
+async function fetchImagesFromProfile(item, { single = false } = {}) {
+  if (single) {
+    clearProfileDetails();
+    clearImages();
+  }
+
+  const group = !single && findGroupForProfile(item.provider, item.uid);
 
   if (group && group.members.length >= 2) {
-    setStatus('<span class="spinner"></span>Fetching linked profiles…');
-    searchBtn.disabled = true;
-
-    const results = await Promise.all(group.members.map(async m => {
-      try {
-        const data = await fetchSingleProfileData(m);
-        if (data.profile) detailCache.set(`${m.provider}:${m.uid}`, data.profile);
-        return { member: m, data, error: null };
-      } catch (err) {
-        return { member: m, data: null, error: err.message };
-      }
-    }));
-
-    searchBtn.disabled = false;
-    const totalImages = results.reduce((n, r) => n + (r.data?.images?.length || 0) + (r.data?.videos?.length || 0), 0);
-    setStatus(`Found ${totalImages} media item${totalImages === 1 ? '' : 's'} across ${group.members.length} linked profiles.`);
-
-    renderMergedProfileDetails(group, results);
+    renderMergedProfileDetails(group, item);
     profileDetailsContainer.scrollIntoView({ behavior: 'smooth' });
     return;
   }
@@ -496,7 +530,12 @@ async function fetchImagesFromProfile(item) {
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
   let data;
 
-  if (item.provider === 'redvelvet' || activeProvider === 'redvelvet') {
+  const cacheKey = `${item.provider}:${item.uid}`;
+  const cachedProfile = detailCache.get(cacheKey);
+
+  if (cachedProfile) {
+    data = { profile: cachedProfile, images: cachedProfile.images || [], videos: cachedProfile.videos || [] };
+  } else if (item.provider === 'redvelvet' || activeProvider === 'redvelvet') {
     const uid = /^\d+$/.test(String(item.uid || ''))
       ? String(item.uid)
       : extractUidFromUrl(String(item.profileUrl || ''));
@@ -515,70 +554,36 @@ async function fetchImagesFromProfile(item) {
       return;
     }
     searchBtn.disabled = false;
-
-    if (data.profile) detailCache.set(`${data.profile.provider}:${data.profile.uid}`, data.profile);
-
-    renderProfileDetails(data.profile, {
-      onAreaClick: p => fetchRedvelvetProfilesByArea(p.areaUrl || p.area),
-      onTagClick: tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); },
-    });
+    if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
   } else {
     data = await fetchEsaImagesFromProfile(item.uid, { setStatus, searchBtn });
     if (!data) return;
-
-    if (data.profile) detailCache.set(`${data.profile.provider}:${data.profile.uid}`, data.profile);
-
-    renderProfileDetails(data.profile, {
-      onAreaClick: p => {
-        activeAreas.clear();
-        excludedAreas.clear();
-        activeAreas.add(p.area);
-        updateFilterChips();
-        runEsaSearch();
-      },
-      onTagClick: null,
-    });
+    if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
   }
 
-  // Auto-suggest: collect all phone-group peers and show link modal
-  if (data.profile?.phone) {
-    const myPhone = normalizePhone(data.profile.phone);
-    const myKey = `${data.profile.provider}:${data.profile.uid}`;
-    const seenKeys = new Set([myKey]);
-    const peers = [];
+  const onAreaClickRv = p => fetchRedvelvetProfilesByArea(p.areaUrl || p.area);
+  const onAreaClickEsa = p => {
+    activeAreas.clear(); excludedAreas.clear();
+    activeAreas.add(p.area);
+    updateFilterChips(); runEsaSearch();
+  };
+  renderProfileDetails(data.profile, {
+    onAreaClick: (item.provider === 'redvelvet' || activeProvider === 'redvelvet') ? onAreaClickRv : onAreaClickEsa,
+    onTagClick: data.profile?.provider === 'redvelvet' ? tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); } : null,
+  });
 
-    const alreadyLinkedWith = (p) => {
-      const ga = findGroupForProfile(data.profile.provider, data.profile.uid);
-      const gb = findGroupForProfile(p.provider, p.uid);
-      return ga && gb && ga.id === gb.id;
-    };
+  suggestPhoneLinks(item, data.profile);
 
-    // Profiles sharing _phoneGroup (known from search results)
-    if (item._phoneGroup) {
-      for (const p of profileLinks) {
-        if (!p.uid || p._phoneGroup !== item._phoneGroup) continue;
-        const k = `${p.provider}:${p.uid}`;
-        if (seenKeys.has(k)) continue;
-        const pairKey = [myKey, k].sort().join('|');
-        if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(p)) continue;
-        seenKeys.add(k);
-        peers.push(p);
-      }
+  // Render venue section for any non-profile group peers
+  if (data.profile) {
+    const g = findGroupForProfile(data.profile.provider, data.profile.uid);
+    if (g) {
+      const venueMembers = g.members
+        .filter(m => !(m.provider === data.profile.provider && String(m.uid) === String(data.profile.uid)))
+        .map(m => ({ member: m, type: getPairLinkType(g, data.profile.provider, data.profile.uid, m.provider, m.uid) }))
+        .filter(({ type }) => type !== 'profile');
+      if (venueMembers.length > 0) renderVenueSection(venueMembers, data.profile.provider);
     }
-
-    // Profiles from detailCache that share the same phone (cross-search)
-    if (myPhone.length >= 7) {
-      for (const [key, cached] of detailCache) {
-        if (seenKeys.has(key)) continue;
-        if (normalizePhone(cached.phone) !== myPhone) continue;
-        const pairKey = [myKey, key].sort().join('|');
-        if (dismissedSuggestions.has(pairKey) || alreadyLinkedWith(cached)) continue;
-        seenKeys.add(key);
-        peers.push(cached);
-      }
-    }
-
-    if (peers.length > 0) showPhoneLinkModal(data.profile, peers);
   }
 
   galleryImageUrls = data.images || [];
@@ -592,15 +597,20 @@ async function fetchImagesFromProfile(item) {
 const LINK_TYPES = ['profile', 'venue', 'unknown', 'unrelated'];
 const LINK_TYPE_LABELS = { profile: 'Same profile', venue: 'Venue', unknown: 'Unknown', unrelated: 'Unrelated' };
 
-function showPhoneLinkModal(currentProfile, peers) {
+function showPhoneLinkModal(currentProfile, peers, opts = {}) {
   const existing = document.getElementById('phone-link-modal');
   if (existing) existing.remove();
 
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
   const myKey = `${currentProfile.provider}:${currentProfile.uid}`;
 
-  // Track selected link type per peer (keyed by provider:uid)
-  const peerTypes = new Map(peers.map(p => [`${p.provider}:${p.uid}`, 'unknown']));
+  // Track selected link type per peer — pre-populate from existing pairs if provided
+  const peerTypes = new Map(peers.map(p => {
+    const initial = opts.existingGroup
+      ? getPairLinkType(opts.existingGroup, currentProfile.provider, currentProfile.uid, p.provider, p.uid)
+      : 'unknown';
+    return [`${p.provider}:${p.uid}`, initial];
+  }));
 
   const overlay = document.createElement('div');
   overlay.id = 'phone-link-modal';
@@ -611,7 +621,7 @@ function showPhoneLinkModal(currentProfile, peers) {
 
   const title = document.createElement('div');
   title.className = 'phone-link-modal-title';
-  title.textContent = 'Same phone number detected';
+  title.textContent = opts.existingGroup ? 'Manage linked profiles' : 'Same phone number detected';
   box.appendChild(title);
 
   const subtitle = document.createElement('div');
@@ -661,6 +671,21 @@ function showPhoneLinkModal(currentProfile, peers) {
     });
 
     row.append(thumb, info, badge);
+
+    if (opts.existingGroup) {
+      const removeBtn = document.createElement('button');
+      removeBtn.textContent = '✕';
+      removeBtn.title = 'Remove from group';
+      removeBtn.style.cssText = 'background:none;border:none;color:#f87171;cursor:pointer;font-size:0.9rem;padding:0 4px;flex-shrink:0;';
+      removeBtn.addEventListener('click', () => {
+        removeFromGroup(opts.existingGroup.id, peer.provider, peer.uid);
+        row.remove();
+        if (opts.onUpdate) opts.onUpdate();
+        renderProfileCards();
+      });
+      row.appendChild(removeBtn);
+    }
+
     peerList.appendChild(row);
   });
   box.appendChild(peerList);
@@ -670,34 +695,51 @@ function showPhoneLinkModal(currentProfile, peers) {
 
   const confirmBtn = document.createElement('button');
   confirmBtn.className = 'phone-link-confirm-btn';
-  confirmBtn.textContent = 'Confirm';
+  confirmBtn.textContent = 'Save';
   confirmBtn.addEventListener('click', () => {
     overlay.remove();
-    peers.forEach(peer => {
-      const peerKey = `${peer.provider}:${peer.uid}`;
-      const type = peerTypes.get(peerKey);
-      const pairKey = [myKey, peerKey].sort().join('|');
-      if (type === 'unrelated') {
-        dismissedSuggestions.add(pairKey);
-      } else {
-        confirmLink(currentProfile, peer, type);
-      }
-    });
+    if (opts.existingGroup) {
+      peers.forEach(peer => {
+        const type = peerTypes.get(`${peer.provider}:${peer.uid}`);
+        setPairLinkType(opts.existingGroup.id, currentProfile.provider, currentProfile.uid, peer.provider, peer.uid, type);
+      });
+      if (opts.onUpdate) opts.onUpdate();
+    } else {
+      peers.forEach(peer => {
+        const peerKey = `${peer.provider}:${peer.uid}`;
+        const type = peerTypes.get(peerKey);
+        const pk = [myKey, peerKey].sort().join('|');
+        if (type === 'unrelated') {
+          dismissedSuggestions.add(pk);
+        } else {
+          confirmLink(currentProfile, peer, type);
+        }
+      });
+    }
     renderProfileCards();
   });
 
-  const dismissAllBtn = document.createElement('button');
-  dismissAllBtn.className = 'phone-link-dismiss-btn';
-  dismissAllBtn.textContent = 'Dismiss all';
-  dismissAllBtn.addEventListener('click', () => {
-    overlay.remove();
-    peers.forEach(peer => {
-      const peerKey = `${peer.provider}:${peer.uid}`;
-      dismissedSuggestions.add([myKey, peerKey].sort().join('|'));
+  const secondaryBtn = document.createElement('button');
+  secondaryBtn.className = 'phone-link-dismiss-btn';
+  if (opts.existingGroup) {
+    secondaryBtn.textContent = 'Add another';
+    secondaryBtn.addEventListener('click', () => {
+      overlay.remove();
+      pendingLinkSource = currentProfile;
+      renderProfileCards();
     });
-  });
+  } else {
+    secondaryBtn.textContent = 'Dismiss all';
+    secondaryBtn.addEventListener('click', () => {
+      overlay.remove();
+      peers.forEach(peer => {
+        const peerKey = `${peer.provider}:${peer.uid}`;
+        dismissedSuggestions.add([myKey, peerKey].sort().join('|'));
+      });
+    });
+  }
 
-  footer.append(confirmBtn, dismissAllBtn);
+  footer.append(confirmBtn, secondaryBtn);
   box.appendChild(footer);
   overlay.appendChild(box);
 
@@ -850,7 +892,7 @@ async function runRedvelvetSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = flattenWithPhoneGroups(data.groups);
+    profileLinks = data.profiles || [];
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
@@ -890,7 +932,7 @@ async function runEsaSearch() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    profileLinks = flattenWithPhoneGroups(data.groups);
+    profileLinks = data.profiles || [];
     setStatus(`Found ${profileLinks.length} profile${profileLinks.length === 1 ? '' : 's'}.`);
   } catch (err) {
     setStatus(`Error: ${err.message}`, true);
@@ -957,7 +999,7 @@ function cancelLinkPickMode() {
 
 function enrichWithPhone(profile) {
   if (profile.phone) return profile;
-  const cached = detailCache.get(String(profile.uid));
+  const cached = detailCache.get(`${profile.provider}:${profile.uid}`);
   return cached?.phone ? { ...profile, phone: cached.phone } : profile;
 }
 
@@ -982,7 +1024,7 @@ function confirmLink(profileA, profileB, linkType = 'unknown') {
     groupId = createGroup(a, b, linkType);
   }
 
-  if (groupId && linkType !== 'unknown') setGroupLinkType(groupId, linkType);
+  if (groupId) setPairLinkType(groupId, a.provider, a.uid, b.provider, b.uid, linkType);
 
   cancelLinkPickMode();
 }
@@ -1026,10 +1068,20 @@ function buildProfileCard(item, index, { onClickExtra, onProfileClick } = {}) {
 
   wrapper.append(img, name, number);
 
+  const sameNumberCount = (item.profiles_with_same_number || []).length;
+  if (sameNumberCount > 0) {
+    const bubble = document.createElement('span');
+    bubble.className = 'profile-card-same-number';
+    bubble.textContent = sameNumberCount + 1;
+    bubble.title = `${sameNumberCount + 1} profiles share this number`;
+    wrapper.appendChild(bubble);
+  }
+
   const group = findGroupForProfile(item.provider, item.uid);
   if (group) {
     const badge = document.createElement('span');
     badge.className = 'profile-card-linked';
+    if (sameNumberCount > 0) badge.style.right = '32px';
     const type = group.linkType || 'unknown';
     badge.title = `Linked (${type}) with ${group.members.length - 1} other profile${group.members.length > 2 ? 's' : ''}`;
     badge.textContent = '🔗';
@@ -1122,58 +1174,6 @@ function renderProfileCards() {
   syncMobileDrawer(filteredProfiles);
 }
 
-function showGroupManagementPopover(group, currentProfile, anchorEl, onUpdate) {
-  const existing = document.getElementById('group-mgmt-popover');
-  if (existing) { existing.remove(); return; }
-
-  const pop = document.createElement('div');
-  pop.id = 'group-mgmt-popover';
-  pop.style.cssText = 'position:absolute;z-index:200;background:#1e293b;border:1px solid #475569;border-radius:8px;padding:10px 14px;min-width:200px;box-shadow:0 4px 24px #0008;';
-
-  const refreshPop = () => {
-    pop.innerHTML = '';
-    const g = findGroupForProfile(currentProfile.provider, currentProfile.uid);
-    if (!g) { pop.remove(); return; }
-
-    g.members.forEach(m => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 0;font-size:0.85rem;color:#e2e8f0;';
-      const label = document.createElement('span');
-      label.style.flex = '1';
-      label.textContent = `${m.name} (${m.provider === 'redvelvet' ? 'RV' : 'ESA'})`;
-      const removeBtn = document.createElement('button');
-      removeBtn.textContent = '✕';
-      removeBtn.style.cssText = 'background:none;border:none;color:#f87171;cursor:pointer;font-size:0.9rem;padding:0 4px;';
-      removeBtn.title = 'Remove from group';
-      removeBtn.addEventListener('click', () => {
-        removeFromGroup(g.id, m.provider, m.uid);
-        onUpdate();
-        refreshPop();
-        renderProfileCards();
-      });
-      row.append(label, removeBtn);
-      pop.appendChild(row);
-    });
-
-    const addBtn = document.createElement('button');
-    addBtn.textContent = '+ Add another';
-    addBtn.style.cssText = 'margin-top:8px;background:none;border:1px solid #475569;color:#94a3b8;border-radius:6px;padding:3px 10px;cursor:pointer;font-size:0.8rem;width:100%;';
-    addBtn.addEventListener('click', () => {
-      pendingLinkSource = currentProfile;
-      pop.remove();
-      renderProfileCards();
-    });
-    pop.appendChild(addBtn);
-  };
-
-  refreshPop();
-
-  anchorEl.style.position = 'relative';
-  anchorEl.appendChild(pop);
-
-  const dismiss = e => { if (!pop.contains(e.target) && e.target !== anchorEl) { pop.remove(); document.removeEventListener('click', dismiss); } };
-  setTimeout(() => document.addEventListener('click', dismiss), 0);
-}
 
 function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = false } = {}) {
   if (!skipClear) clearProfileDetails();
@@ -1235,10 +1235,15 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
     const g = findGroupForProfile(profile.provider, profile.uid);
     if (g) {
       const count = g.members.length;
-      const type = g.linkType || 'unknown';
-      linkBtn.textContent = `Linked (${count}) · ${type}`;
+      const peers = g.members.filter(m => !(m.provider === profile.provider && String(m.uid) === String(profile.uid)));
+      const types = [...new Set(peers.map(m => getPairLinkType(g, profile.provider, profile.uid, m.provider, m.uid)))];
+      const typeLabel = types.length === 1 ? types[0] : types.join('/');
+      linkBtn.textContent = `Linked (${count}) · ${typeLabel}`;
       linkBtn.className = 'profile-link-btn is-linked';
-      linkBtn.title = g.members.map(m => `${m.name} (${m.provider === 'redvelvet' ? 'RV' : 'ESA'})`).join(', ');
+      linkBtn.title = peers.map(m => {
+        const t = getPairLinkType(g, profile.provider, profile.uid, m.provider, m.uid);
+        return `${m.name} (${m.provider === 'redvelvet' ? 'RV' : 'ESA'}) · ${t}`;
+      }).join(', ');
     } else {
       linkBtn.textContent = 'Link profile';
       linkBtn.className = 'profile-link-btn';
@@ -1250,7 +1255,8 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
   linkBtn.addEventListener('click', () => {
     const g = findGroupForProfile(profile.provider, profile.uid);
     if (g) {
-      showGroupManagementPopover(g, profile, linkBtn, updateLinkBtn);
+      const peers = g.members.filter(m => !(m.provider === profile.provider && String(m.uid) === String(profile.uid)));
+      showPhoneLinkModal(profile, peers, { existingGroup: g, onUpdate: updateLinkBtn });
     } else {
       pendingLinkSource = profile;
       renderProfileCards();
@@ -1335,7 +1341,77 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
   }
 }
 
-function renderMergedProfileDetails(group, results) {
+function renderVenueSection(members, currentProvider) {
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+
+  // Cluster members that are "same person" with each other into single rows.
+  const used = new Set();
+  const rows = [];
+  for (let i = 0; i < members.length; i++) {
+    if (used.has(i)) continue;
+    const clusterMembers = [members[i]];
+    used.add(i);
+    for (let j = i + 1; j < members.length; j++) {
+      if (used.has(j)) continue;
+      const ga = findGroupForProfile(members[i].member.provider, members[i].member.uid);
+      const gb = findGroupForProfile(members[j].member.provider, members[j].member.uid);
+      if (ga && gb && ga.id === gb.id) {
+        const t = getPairLinkType(ga, members[i].member.provider, members[i].member.uid, members[j].member.provider, members[j].member.uid);
+        if (t === 'profile') { clusterMembers.push(members[j]); used.add(j); }
+      }
+    }
+    // Representative for thumbnail/name: same provider as current, else first
+    const rep = clusterMembers.find(m => m.member.provider === currentProvider) || clusterMembers[0];
+    rows.push({ rep, clusterMembers, type: rep.type });
+  }
+
+  const venueSection = document.createElement('div');
+  venueSection.className = 'venue-section';
+
+  const venueHeader = document.createElement('button');
+  venueHeader.className = 'venue-section-header';
+  const labelTypes = [...new Set(rows.map(r => r.type))].join('/');
+  venueHeader.innerHTML = `<span class="venue-section-label">${labelTypes} · ${rows.length} profile${rows.length > 1 ? 's' : ''}</span><span class="venue-section-chevron">›</span>`;
+
+  const venueList = document.createElement('div');
+  venueList.className = 'venue-section-list';
+  venueList.style.display = 'none';
+
+  rows.forEach(({ rep, clusterMembers }) => {
+    const { member } = rep;
+    const row = document.createElement('button');
+    row.className = 'venue-section-member';
+    const thumbSrc = member.thumbUrl && /^https?:\/\//i.test(member.thumbUrl)
+      ? `${relayBase}/image?url=${encodeURIComponent(member.thumbUrl)}`
+      : member.thumbUrl || '';
+    const thumb = document.createElement('img');
+    thumb.className = 'venue-section-thumb';
+    thumb.src = thumbSrc || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="100%" height="100%" fill="%23334155"/></svg>';
+    thumb.alt = member.name || '';
+    const info = document.createElement('span');
+    const provLabels = [...new Set(clusterMembers.map(m => m.member.provider === 'redvelvet' ? 'RV' : 'ESA'))].join('/');
+    info.textContent = `${member.name} (${provLabels})`;
+    row.append(thumb, info);
+    row.addEventListener('click', () => {
+      const primary = clusterMembers.find(m => m.member.provider === currentProvider) || clusterMembers[0];
+      // Single provider cluster: open directly. Multi-provider: let group branch render tabs.
+      const isSingleProvider = new Set(clusterMembers.map(m => m.member.provider)).size === 1;
+      fetchImagesFromProfile(primary.member, { single: isSingleProvider });
+    });
+    venueList.appendChild(row);
+  });
+
+  venueHeader.addEventListener('click', () => {
+    const open = venueList.style.display !== 'none';
+    venueList.style.display = open ? 'none' : '';
+    venueHeader.classList.toggle('open', !open);
+  });
+
+  venueSection.append(venueHeader, venueList);
+  profileDetailsContainer.appendChild(venueSection);
+}
+
+function renderMergedProfileDetails(group, clickedItem) {
   clearProfileDetails();
   clearImages();
   contentLayout?.classList.add('has-profile');
@@ -1344,16 +1420,113 @@ function renderMergedProfileDetails(group, results) {
   const toRelayImageUrl = (url) => `${relayBase}/image?url=${encodeURIComponent(url)}`;
   const toDisplayImageUrl = (url) => /^https?:\/\//i.test(url) ? toRelayImageUrl(url) : url;
 
-  // ── Pre-render each member's gallery into a hidden wrapper ───────────────
-  // Each wrapper is appended to imagesContainer once and just shown/hidden on tab switch.
-  const galleryWrappers = results.map((r, i) => {
+  // ── Split members into "same person" tabs vs venue/other ─────────────────
+  // Primary = the member matching the clicked item (or first member)
+  const primaryMember = group.members.find(
+    m => m.provider === clickedItem.provider && String(m.uid) === String(clickedItem.uid)
+  ) || group.members[0];
+
+  const tabMembers = [primaryMember];
+  const venueMembers = [];
+
+  group.members.forEach(m => {
+    if (m.provider === primaryMember.provider && String(m.uid) === String(primaryMember.uid)) return;
+    const type = getPairLinkType(group, primaryMember.provider, primaryMember.uid, m.provider, m.uid);
+    if (type === 'profile') {
+      tabMembers.push(m);
+    } else {
+      venueMembers.push({ member: m, type });
+    }
+  });
+
+  // ── Tab bar ──────────────────────────────────────────────────────────────
+  const tabBar = document.createElement('div');
+  tabBar.className = 'merged-tab-bar';
+
+  const unlinkBtn = document.createElement('button');
+  unlinkBtn.className = 'merged-tab-unlink';
+  unlinkBtn.textContent = 'Unlink all';
+  unlinkBtn.title = 'Remove this group — profiles remain, just unlinked';
+  unlinkBtn.addEventListener('click', () => {
+    const members = [...group.members];
+    members.forEach(m => removeFromGroup(group.id, m.provider, m.uid));
+    renderProfileCards();
+    clearProfileDetails();
+    clearImages();
+    contentLayout?.classList.remove('has-profile');
+  });
+
+  tabMembers.forEach((m, i) => {
+    const tab = document.createElement('button');
+    tab.className = 'merged-tab' + (i === 0 ? ' active' : '');
+    const prov = m.provider === 'redvelvet' ? 'RV' : 'ESA';
+    tab.textContent = `${m.name} (${prov})`;
+    tab.addEventListener('click', () => switchTab(i));
+    tabBar.appendChild(tab);
+  });
+
+  tabBar.appendChild(unlinkBtn);
+  profileDetailsContainer.appendChild(tabBar);
+
+  // ── Venue section (collapsed by default) ─────────────────────────────────
+  if (venueMembers.length > 0) {
+    renderVenueSection(venueMembers, primaryMember.provider);
+  }
+
+  // Gallery wrapper per tab member — populated lazily on first activation
+  const galleryWrappers = tabMembers.map((m, i) => {
     const wrapper = document.createElement('div');
     wrapper.className = 'merged-gallery-pane' + (i === 0 ? ' active' : '');
     wrapper.style.display = i === 0 ? '' : 'none';
-    if (!r.error && r.data) {
-      const images = r.data.images || [];
-      const videos = r.data.videos || [];
-      const profileName = r.data.profile?.name?.replace(/[\\/:*?"<>|]/g, '_') || 'profile';
+    wrapper.dataset.loaded = 'false';
+    imagesContainer.appendChild(wrapper);
+    return wrapper;
+  });
+
+  // ── Switch tab: lazy-load on first visit ─────────────────────────────────
+  const switchTab = async (index) => {
+    tabBar.querySelectorAll('.merged-tab').forEach((t, i) => t.classList.toggle('active', i === index));
+    galleryWrappers.forEach((w, i) => {
+      w.style.display = i === index ? '' : 'none';
+      w.classList.toggle('active', i === index);
+    });
+
+    const existingCard = profileDetailsContainer.querySelector('.profile-details-card');
+    if (existingCard) existingCard.remove();
+
+    const member = tabMembers[index];
+    const wrapper = galleryWrappers[index];
+
+    // Check if already loaded
+    const cacheKey = `${member.provider}:${member.uid}`;
+    let result = detailCache.get(cacheKey);
+
+    if (!result) {
+      setStatus('<span class="spinner"></span>Fetching profile…');
+      searchBtn.disabled = true;
+      try {
+        const data = await fetchSingleProfileData(member);
+        result = { ...data.profile, images: data.images || [], videos: data.videos || [] };
+        detailCache.set(cacheKey, result);
+      } catch (err) {
+        setStatus(`Error: ${err.message}`, true);
+        searchBtn.disabled = false;
+        const errEl = document.createElement('p');
+        errEl.style.cssText = 'color:#f87171;padding:12px;';
+        errEl.textContent = `Could not load profile: ${err.message}`;
+        profileDetailsContainer.appendChild(errEl);
+        galleryImageUrls = [];
+        return;
+      }
+      searchBtn.disabled = false;
+    }
+
+    // Populate gallery wrapper if not yet done
+    if (wrapper.dataset.loaded === 'false') {
+      wrapper.dataset.loaded = 'true';
+      const images = result.images || [];
+      const videos = result.videos || [];
+      const profileName = (result.name || 'profile').replace(/[\\/:*?"<>|]/g, '_');
       let slot = 0;
 
       images.forEach((url, idx) => {
@@ -1392,66 +1565,12 @@ function renderMergedProfileDetails(group, results) {
         slot++;
       });
     }
-    imagesContainer.appendChild(wrapper);
-    return wrapper;
-  });
 
-  // ── Tab bar (rendered above the detail card) ──────────────────────────────
-  const tabBar = document.createElement('div');
-  tabBar.className = 'merged-tab-bar';
-
-  const unlinkBtn = document.createElement('button');
-  unlinkBtn.className = 'merged-tab-unlink';
-  unlinkBtn.textContent = 'Unlink all';
-  unlinkBtn.title = 'Remove this group — profiles remain, just unlinked';
-  unlinkBtn.addEventListener('click', () => {
-    const members = [...group.members];
-    members.forEach(m => removeFromGroup(group.id, m.provider, m.uid));
-    renderProfileCards();
-    clearProfileDetails();
-    clearImages();
-    contentLayout?.classList.remove('has-profile');
-  });
-
-  results.forEach((r, i) => {
-    const tab = document.createElement('button');
-    tab.className = 'merged-tab' + (i === 0 ? ' active' : '');
-    const prov = r.member.provider === 'redvelvet' ? 'RV' : 'ESA';
-    tab.textContent = `${r.member.name} (${prov})`;
-    tab.addEventListener('click', () => switchTab(i));
-    tabBar.appendChild(tab);
-  });
-
-  tabBar.appendChild(unlinkBtn);
-  profileDetailsContainer.appendChild(tabBar);
-
-  // ── Switch tab: swap detail card + show pre-rendered gallery ─────────────
-  const switchTab = (index) => {
-    tabBar.querySelectorAll('.merged-tab').forEach((t, i) => t.classList.toggle('active', i === index));
-    galleryWrappers.forEach((w, i) => {
-      w.style.display = i === index ? '' : 'none';
-      w.classList.toggle('active', i === index);
-    });
-
-    const existingCard = profileDetailsContainer.querySelector('.profile-details-card');
-    if (existingCard) existingCard.remove();
-
-    const r = results[index];
-
-    if (r.error || !r.data) {
-      const err = document.createElement('p');
-      err.style.cssText = 'color:#f87171;padding:12px;';
-      err.textContent = `Could not load profile: ${r.error || 'unknown error'}`;
-      profileDetailsContainer.appendChild(err);
-      galleryImageUrls = [];
-      return;
-    }
-
-    galleryImageUrls = r.data.images || [];
-    const total = galleryImageUrls.length + (r.data.videos?.length || 0);
+    galleryImageUrls = result.images || [];
+    const total = galleryImageUrls.length + (result.videos?.length || 0);
     setStatus(`Found ${total} media item${total === 1 ? '' : 's'}.`);
 
-    renderProfileDetails(r.data.profile, {
+    renderProfileDetails(result, {
       skipClear: true,
       onAreaClick: p => {
         if (p.provider === 'redvelvet') {
@@ -1462,12 +1581,14 @@ function renderMergedProfileDetails(group, results) {
           updateFilterChips(); runEsaSearch();
         }
       },
-      onTagClick: r.data.profile.provider === 'redvelvet'
+      onTagClick: result.provider === 'redvelvet'
         ? tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); }
         : null,
     });
 
-    // Update download-all button to operate on the active tab's gallery
+    // Suggest phone links for newly loaded profiles
+    suggestPhoneLinks(member, result);
+
     renderDownloadAllBtn(relayBase, toRelayImageUrl);
   };
 

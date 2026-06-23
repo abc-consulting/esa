@@ -4,7 +4,7 @@ const { ESA_GALLERY_URL } = require('../constants');
 const { send } = require('../utils/http');
 const { fetchEsaProfiles } = require('./profiles');
 const { normalizeAreaName } = require('../utils/normalize');
-const { groupProfilesByPhone } = require('../utils/groups');
+const { flattenWithSameNumber } = require('../utils/groups');
 
 async function pLimit(concurrency, tasks) {
   const results = [];
@@ -77,8 +77,8 @@ async function handleEsaSearch(req, res) {
       profiles = profiles.filter(p => !excluded.has(normalizeAreaName(p.area)));
     }
 
-    const groups = groupProfilesByPhone(profiles);
-    send(res, 200, JSON.stringify({ count: profiles.length, groups }), {
+    const flatProfiles = flattenWithSameNumber(profiles);
+    send(res, 200, JSON.stringify({ count: profiles.length, profiles: flatProfiles }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });
