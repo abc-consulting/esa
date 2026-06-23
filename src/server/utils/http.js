@@ -2,9 +2,9 @@
 
 const { REQUEST_TIMEOUT_MS, ALLOWED_IMAGE_HOSTS } = require('../constants');
 
-async function fetchText(url, headers = {}) {
+async function fetchText(url, headers = {}, timeout = REQUEST_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeout);
 
   try {
     const response = await fetch(url, {

@@ -223,7 +223,7 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
   console.log(`[RV DEBUG] fetchRedvelvetProfilesWithPostback: GET ${startUrl}`);
   let firstHtml;
   try {
-    firstHtml = await fetchText(startUrl);
+    firstHtml = await fetchText(startUrl, {}, POSTBACK_TIMEOUT_MS);
   } catch (err) {
     console.error(`[RV DEBUG] fetchRedvelvetProfilesWithPostback: GET failed: ${err.message}`);
     return [];
