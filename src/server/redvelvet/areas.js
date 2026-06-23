@@ -5,7 +5,7 @@ const { extractHiddenFields, extractDataPagerTargets } = require('../utils/html'
 const { normalizeAreaName } = require('../utils/normalize');
 const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS, REQUEST_TIMEOUT_MS, POSTBACK_TIMEOUT_MS } = require('../constants');
 const { URL } = require('url');
-const { groupProfilesByPhone } = require('../utils/groups');
+const { flattenWithSameNumber } = require('../utils/groups');
 
 let areaMapCache = null;
 let areaMapCacheTime = 0;
@@ -221,7 +221,13 @@ async function fetchRedvelvetProfilesWithPostback(startUrl) {
 
   // Use fetchText for the initial GET so we get the same timeout + redirect handling
   console.log(`[RV DEBUG] fetchRedvelvetProfilesWithPostback: GET ${startUrl}`);
-  const firstHtml = await fetchText(startUrl);
+  let firstHtml;
+  try {
+    firstHtml = await fetchText(startUrl, {}, POSTBACK_TIMEOUT_MS);
+  } catch (err) {
+    console.error(`[RV DEBUG] fetchRedvelvetProfilesWithPostback: GET failed: ${err.message}`);
+    return [];
+  }
   console.log(`[RV DEBUG] Initial GET done. HTML length: ${firstHtml.length}. Snippet: ${firstHtml.slice(0, 200).replace(/\s+/g, ' ')}`);
   pushProfilesFromHtml(firstHtml);
   console.log(`[RV DEBUG] After page 1: ${byUid.size} profiles`);
@@ -351,12 +357,12 @@ async function handleRedvelvetAreaProfiles(req, res, serverBase) {
 
   try {
     const result = await getRedvelvetAreaProfiles(rawName, cityBucket);
-    const groups = groupProfilesByPhone(result.profiles);
+    const flatProfiles = flattenWithSameNumber(result.profiles);
     send(res, 200, JSON.stringify({
       area: normalizeAreaName(rawName),
       areaUrl: result.areaUrl,
       count: result.profiles.length,
-      groups,
+      profiles: flatProfiles,
     }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'public, max-age=300',

@@ -5,7 +5,7 @@ const { CACHE_TTL_MS, RACIAL_TAGS } = require('../constants');
 const { getRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap, fetchRedvelvetProfilesWithPostback } = require('./areas');
 const { resolveRedvelvetTagUrl } = require('./tags');
 const { fetchProfileAgeAndBust } = require('./profile-details');
-const { groupProfilesByPhone } = require('../utils/groups');
+const { flattenWithSameNumber } = require('../utils/groups');
 
 const tagProfileCache = new Map(); // tag label → { profiles, fetchedAt }
 
@@ -187,8 +187,8 @@ async function handleRedvelvetSearch(req, res) {
       });
     }
 
-    const groups = groupProfilesByPhone(profiles);
-    send(res, 200, JSON.stringify({ count: profiles.length, groups }), {
+    const flatProfiles = flattenWithSameNumber(profiles);
+    send(res, 200, JSON.stringify({ count: profiles.length, profiles: flatProfiles }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });

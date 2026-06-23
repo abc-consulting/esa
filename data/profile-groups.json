@@ -17,9 +17,33 @@
         "area": "Goodwood",
         "thumbUrl": "https://goldmember.esa.co.za//picserver.php?type=picsets&subid=199663&picnum=4&size=medium",
         "profileUrl": "https://www.esa.co.za/escorts/viewEscort.php?uid=151945"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "83352",
+        "name": "Scarlett",
+        "area": "Goodwood",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/83352180608070.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Scarlett/Goodwood/83352",
+        "phone": "060 696 0643"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "83246",
+        "name": "Ms Lyn",
+        "area": "Goodwood",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/Escort-8324600406092.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Ms%20Lyn/Goodwood/83246",
+        "phone": "060 696 0643"
       }
     ],
-    "createdAt": 1782141838470
+    "createdAt": 1782141838470,
+    "linkType": "venue",
+    "pairs": {
+      "esa:151945|redvelvet:65006": "profile",
+      "redvelvet:65006|redvelvet:83352": "venue",
+      "redvelvet:65006|redvelvet:83246": "venue"
+    }
   },
   {
     "id": "68dad469-ca55-40bf-9624-35c268fa0af5",
@@ -251,5 +275,30 @@
       }
     ],
     "createdAt": 1782165499948
+  },
+  {
+    "id": "f583ff9f-5dad-4cb9-b0bb-9f6d25dc9fd0",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "63730",
+        "name": "Sage",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/63730180607733.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Sage/Tyger%20Valley/63730",
+        "phone": "064 077 2161"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "77665",
+        "name": "Lady Katt",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/77665220607606.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Lady%20Katt/Tyger%20Valley/77665",
+        "phone": "064 077 2161"
+      }
+    ],
+    "createdAt": 1782192036378,
+    "linkType": "venue"
   }
 ]

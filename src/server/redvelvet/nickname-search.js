@@ -9,7 +9,7 @@ const {
   buildRedvelvetAreaHashMap,
 } = require('./areas');
 const { URL } = require('url');
-const { groupProfilesByPhone } = require('../utils/groups');
+const { flattenWithSameNumber } = require('../utils/groups');
 const { REQUEST_TIMEOUT_MS, POSTBACK_TIMEOUT_MS } = require('../constants');
 
 const REDVELVET_BASE = 'https://redvelvet.co.za';
@@ -73,8 +73,8 @@ async function handleRedvelvetNicknameSearch(req, res, serverBase) {
       clearTimeout(timer);
     }
 
-    const groups = groupProfilesByPhone(profiles);
-    send(res, 200, JSON.stringify({ count: profiles.length, groups }), {
+    const flatProfiles = flattenWithSameNumber(profiles);
+    send(res, 200, JSON.stringify({ count: profiles.length, profiles: flatProfiles }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });

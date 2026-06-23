@@ -68,7 +68,16 @@ function findGroupForProfile(provider, uid) {
   return getGroups().find(g => g.members.some(m => profileKey(m.provider, m.uid) === key)) || null;
 }
 
-function createGroup(profileA, profileB) {
+function pairKey(providerA, uidA, providerB, uidB) {
+  return [profileKey(providerA, uidA), profileKey(providerB, uidB)].sort().join('|');
+}
+
+function getPairLinkType(group, providerA, uidA, providerB, uidB) {
+  const key = pairKey(providerA, uidA, providerB, uidB);
+  return (group.pairs && group.pairs[key]) || group.linkType || 'unknown';
+}
+
+function createGroup(profileA, profileB, linkType = 'unknown') {
   const groups = getGroups();
   const id = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
@@ -82,9 +91,27 @@ function createGroup(profileA, profileB) {
     profileUrl: p.profileUrl || '',
     phone: p.phone || '',
   });
-  groups.push({ id, members: [toMember(profileA), toMember(profileB)], createdAt: Date.now() });
+  const key = pairKey(profileA.provider, profileA.uid, profileB.provider, profileB.uid);
+  groups.push({ id, members: [toMember(profileA), toMember(profileB)], createdAt: Date.now(), linkType, pairs: { [key]: linkType } });
   saveGroups(groups);
   return id;
+}
+
+function setGroupLinkType(groupId, linkType) {
+  const groups = getGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (!group) return;
+  group.linkType = linkType;
+  saveGroups(groups);
+}
+
+function setPairLinkType(groupId, providerA, uidA, providerB, uidB, linkType) {
+  const groups = getGroups();
+  const group = groups.find(g => g.id === groupId);
+  if (!group) return;
+  if (!group.pairs) group.pairs = {};
+  group.pairs[pairKey(providerA, uidA, providerB, uidB)] = linkType;
+  saveGroups(groups);
 }
 
 function addToGroup(groupId, profile) {
@@ -126,6 +153,10 @@ function mergeGroups(groupIdA, groupIdB) {
   b.members.forEach(m => {
     if (!existingKeys.has(profileKey(m.provider, m.uid))) a.members.push(m);
   });
+  if (b.pairs) {
+    if (!a.pairs) a.pairs = {};
+    Object.assign(a.pairs, b.pairs);
+  }
   saveGroups(groups.filter(g => g.id !== groupIdB));
 }
 
@@ -142,4 +173,7 @@ export {
   removeFromGroup,
   mergeGroups,
   getGroupMembers,
+  setGroupLinkType,
+  setPairLinkType,
+  getPairLinkType,
 };

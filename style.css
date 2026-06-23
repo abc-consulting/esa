@@ -1163,6 +1163,23 @@ body {
   pointer-events: none;
 }
 
+.profile-card-same-number {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: center;
+  pointer-events: none;
+}
+
 .profile-card {
   position: relative;
 }
@@ -1274,6 +1291,132 @@ body {
   font-size: 0.82rem;
 }
 
+/* ─── PHONE LINK MODAL ───────────────────────────────────────────────────── */
+
+.phone-link-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.phone-link-modal-box {
+  background: #16213e;
+  border: 1px solid #4a4a6a;
+  border-radius: 12px;
+  padding: 24px;
+  width: min(480px, 92vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.phone-link-modal-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.phone-link-modal-subtitle {
+  font-size: 0.82rem;
+  color: #94a3b8;
+  margin-top: -6px;
+}
+
+.phone-link-peer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.phone-link-peer-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 8px;
+}
+
+.phone-link-peer-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #334155;
+  flex-shrink: 0;
+}
+
+.phone-link-peer-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.phone-link-peer-name {
+  font-size: 0.9rem;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.phone-link-peer-area {
+  font-size: 0.75rem;
+  color: #64748b;
+}
+
+.link-type-badge {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.link-type-badge:hover { opacity: 0.85; }
+.link-type-badge[data-type="profile"]   { background: #6366f1; color: #fff; }
+.link-type-badge[data-type="venue"]     { background: #f59e0b; color: #1c1c1c; }
+.link-type-badge[data-type="unknown"]   { background: #334155; color: #94a3b8; }
+.link-type-badge[data-type="unrelated"] { background: #ef4444; color: #fff; }
+
+.phone-link-modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.phone-link-confirm-btn {
+  background: #6366f1;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 18px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-link-confirm-btn:hover { background: #4f46e5; }
+
+.phone-link-dismiss-btn {
+  background: none;
+  border: 1px solid #475569;
+  color: #94a3b8;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.phone-link-dismiss-btn:hover { border-color: #94a3b8; color: #e2e8f0; }
+
 /* Merged detail view: tab bar */
 .merged-tab-bar {
   display: flex;
@@ -1312,3 +1455,59 @@ body {
   cursor: pointer;
 }
 .merged-tab-unlink:hover { color: #f87171; border-color: #f87171; }
+
+.venue-section {
+  margin-bottom: 12px;
+}
+.venue-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: none;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #94a3b8;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+.venue-section-header:hover { background: #1e293b; color: #e2e8f0; }
+.venue-section-label { flex: 1; }
+.venue-section-chevron {
+  font-size: 1rem;
+  transition: transform 0.2s;
+  display: inline-block;
+}
+.venue-section-header.open .venue-section-chevron { transform: rotate(90deg); }
+.venue-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 0 0 0;
+}
+.venue-section-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: #cbd5e1;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+}
+.venue-section-member:hover { background: #1e293b; color: #e2e8f0; }
+.venue-section-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid #475569;
+}
