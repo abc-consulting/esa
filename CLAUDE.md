@@ -21,6 +21,13 @@ Open `http://localhost:5510` in a browser. There is no build step — the fronte
 
 Without `RV_EMAIL`/`RV_PASSWORD` the server runs in anonymous mode; some profile details may be unavailable.
 
+## Reference Docs
+
+Full server architecture reference — data structures, endpoint table, request flows, caching strategy, and a guide for adding new providers:
+
+- [`docs/server-architecture.md`](docs/server-architecture.md)
+- [`docs/tech-debt.md`](docs/tech-debt.md) — known inconsistencies backlog
+
 ## Architecture
 
 This is a single-page browser app backed by a lightweight Node.js server. There are no frameworks, no bundler, and no npm dependencies (jszip is loaded from a CDN `<script>` tag in `index.html`).
@@ -29,11 +36,12 @@ This is a single-page browser app backed by a lightweight Node.js server. There 
 
 **Browser layer** (`src/client/app.js` + `src/client/modules/`) — ES module scripts loaded by `index.html`. All UI logic lives here.
 
-**Server layer** (`src/server/router.js`) — A plain `http.createServer` server with four responsibilities:
+**Server layer** (`src/server/router.js`) — A plain `http.createServer` server with responsibilities:
 1. Serve static files (HTML, JS, CSS) so ES module imports work without a CORS error
 2. Relay images via `/image?url=<encoded>` — bypasses hot-link blocking from ESA and RedVelvet; only allows a fixed allowlist of hostnames (`ALLOWED_IMAGE_HOSTS` in `src/server/constants.js`)
-3. Expose RedVelvet lookup APIs so the browser doesn't scrape those sites through a public CORS proxy
+3. Expose ESA and RedVelvet lookup APIs so the browser doesn't scrape those sites through a public CORS proxy
 4. Handle RedVelvet authentication and session management so credentials never leave the server
+5. Persist favorites and profile-group links to `data/` JSON files
 
 The relay base URL is injected into the browser via a `<meta name="esa-image-relay-base-url">` tag in `index.html`. If this tag is absent or empty, image relaying is silently skipped.
 
@@ -41,16 +49,23 @@ The relay base URL is injected into the browser via a `<meta name="esa-image-rel
 
 | Endpoint | Method | Handler | Description |
 |---|---|---|---|
-| `/image?url=<encoded>` | GET | `middleware/image-relay.js` | Proxy-relay images from allowed hosts |
-| `/redvelvet-area?name=<name>` | GET | `redvelvet/areas.js` | Resolve area name → URL + IDs |
-| `/redvelvet-areas?cityBucket=<n>` | GET | `redvelvet/areas.js` | List all area names for a city bucket |
-| `/redvelvet-area-profiles?name=<name>&cityBucket=<n>` | GET | `redvelvet/areas.js` | Fetch all profiles in an area |
-| `/redvelvet-tags?` | GET | `redvelvet/tags.js` | List all fetish/tag labels |
-| `/redvelvet-tag-profiles?tag=<label>&cityBucket=<n>` | GET | `redvelvet/profiles.js` | Fetch all profiles matching a tag |
-| `/redvelvet-profile?` | GET | `redvelvet/profiles.js` | Look up a single profile by UID |
-| `/redvelvet-profile-details?` | GET | `redvelvet/profile-details.js` | Fetch full profile detail (age, bust, images, video, tags) |
-| `/redvelvet-search` | POST | `redvelvet/search.js` | Composite search with include/exclude filters, age, and bust |
-| `/rv-auth-status` | GET | `redvelvet/auth.js` | Check whether a valid session cookie exists |
+| `/image?url=<encoded>` | GET | `middleware/image-relay.js` | Proxy-relay images/videos from allowed hosts |
+| `/rv-auth-status` | GET | `redvelvet/auth.js` | Check whether a valid RV session cookie exists |
+| `/profile-groups` | GET/POST | `profile-groups.js` | Read/write profile group links from `data/profile-groups.json` |
+| `/favorites` | GET/POST | `favorites.js` | Read/write favorites from `data/favorites.json` |
+| `/esa-areas` | GET | `esa/areas-list.js` | List all ESA area names |
+| `/esa-profiles?nickname=<n>` | GET | `esa/profiles.js` | Search ESA profiles by nickname |
+| `/esa-profiles?area=<a>` | GET | `esa/profiles.js` | Fetch all ESA profiles in an area |
+| `/esa-profile-details?id=<uid>` | GET | `esa/profile-details.js` | Full ESA profile detail (images, phone, age) |
+| `/esa-search` | POST | `esa/search.js` | Composite ESA search with include/exclude area filters |
+| `/redvelvet-areas?cityBucket=<n>` | GET | `redvelvet/areas-list.js` | List all RV area names for a city bucket |
+| `/redvelvet-area?name=<n>` | GET | `redvelvet/areas.js` | Resolve RV area name → URL + IDs |
+| `/redvelvet-area-profiles?name=<n>&cityBucket=<n>` | GET | `redvelvet/areas.js` | Fetch all profiles in a RV area |
+| `/redvelvet-tags?` | GET | `redvelvet/tags.js` | List all RV fetish/tag labels |
+| `/redvelvet-tag-profiles?tag=<label>&cityBucket=<n>` | GET | `redvelvet/profiles.js` | Fetch all RV profiles matching a tag |
+| `/redvelvet-profile-details?id=<uid>` | GET | `redvelvet/profile-details.js` | Full RV profile detail (age, bust, images, video, tags) |
+| `/redvelvet-nickname-search?nickname=<n>&cityBucket=<n>` | GET | `redvelvet/nickname-search.js` | Search RV profiles by nickname |
+| `/redvelvet-search` | POST | `redvelvet/search.js` | Composite RV search with include/exclude filters, age, and bust |
 
 ### Module layout
 
@@ -70,22 +85,33 @@ src/
         esa-service.js       — fetches ESA profiles and images; returns structured data, never touches DOM
         redvelvet-service.js — fetches RedVelvet profiles/images via the local server relay
   server/
-    router.js              — http.createServer, route dispatch, startup warmup (hashmaps + auth)
+    router.js              — http.createServer, route dispatch, startup warmup
     constants.js           — PORT, ROOT, MIME_TYPES, ALLOWED_IMAGE_HOSTS, RACIAL_TAGS, URLs, TTLs
+    profile-groups.js      — GET/POST /profile-groups; reads/writes data/profile-groups.json
+    favorites.js           — GET/POST /favorites; reads/writes data/favorites.json
     middleware/
       static.js            — static file serving
-      image-relay.js       — /image proxy relay
-    redvelvet/
-      areas.js             — area hashmap build/cache, area profile fetching, area handlers
-      tags.js              — tag hashmap build/cache, tag URL resolution, /redvelvet-tags handler
-      profiles.js          — ASP.NET __doPostBack pagination, /redvelvet-tag-profiles and /redvelvet-profile handlers
-      profile-details.js   — full profile detail scraping (name, age, bust, images, videos, tags); two-tier cache
-      search.js            — composite /redvelvet-search handler; three-state include/exclude, age & bust filtering
-      auth.js              — RedVelvet login/session management (RV_EMAIL/RV_PASSWORD env vars, cookie caching)
+      image-relay.js       — /image proxy relay with size fallback and byte cap
     utils/
       http.js              — fetchText, send, isAllowedImageUrl
-      html.js              — extractHiddenFields, extractDataPagerTargets, stripTags, decodeHtmlEntities
+      html.js              — extractHiddenFields, extractDataPagerTargets, stripTags, decodeHtmlEntities, getTagAttribute
       normalize.js         — normalizeAreaName, normalizeTagName, decodePlusSegment
+      groups.js            — flattenWithSameNumber (annotates profiles with profiles_with_same_number)
+    esa/
+      areas.js             — buildEsaAreaHashMap (scraper + 4h cache)
+      areas-list.js        — handleEsaAreas
+      profiles.js          — parseEsaProfileCards, fetchEsaProfiles, handleEsaProfilesByNickname, handleEsaProfilesByArea
+      profile-details.js   — parseEsaProfileDetails, fetchEsaProfileDetails, handleEsaProfileDetails (4h cache)
+      search.js            — handleEsaSearch; area union/exclusion, nickname search
+    redvelvet/
+      auth.js              — two-step ASP.NET login; session cookie cache + deduplication
+      areas.js             — buildRedvelvetAreaHashMap, fetchRedvelvetProfilesWithPostback (ASP.NET __doPostBack pagination, max 50 pages), getRedvelvetAreaProfiles, handleRedvelvetAreaLookup, handleRedvelvetAreaProfiles
+      areas-list.js        — handleRedvelvetAreas
+      tags.js              — buildRedvelvetTagHashMap, resolveRedvelvetTagUrl, handleRedvelvetTags
+      profiles.js          — handleRedvelvetTagProfiles
+      profile-details.js   — parseProfileDetails, fetchProfileMeta (metaCache), fetchRedvelvetProfileDetails (detailCache), handleRedvelvetProfileDetails, fetchProfileAgeAndBust; two-tier 4h cache
+      search.js            — handleRedvelvetSearch; three-state include/exclude, racial union, age & bust filtering
+      nickname-search.js   — handleRedvelvetNicknameSearch; ASP.NET form POST search
 ```
 
 ### Provider pattern
@@ -133,7 +159,7 @@ All ESA page fetches go through `https://corsproxy.io/?<encoded-url>` (the publi
 
 ### RedVelvet pagination
 
-RedVelvet uses ASP.NET WebForms with `__doPostBack` for pagination. `fetchRedvelvetProfilesWithPostback` in `src/server/redvelvet/profiles.js` implements a queue-based loop that extracts `__doPostBack` targets from each page and submits POST requests with the full hidden-field payload to walk through pages (capped at 25 pages). This runs server-side so the browser is not exposed to cross-origin POST restrictions.
+RedVelvet uses ASP.NET WebForms with `__doPostBack` for pagination. `fetchRedvelvetProfilesWithPostback` in `src/server/redvelvet/areas.js` implements a loop that extracts `__doPostBack` targets from each page and submits POST requests with the full hidden-field payload to walk through pages (capped at 50 pages). This runs server-side so the browser is not exposed to cross-origin POST restrictions.
 
 ### Profile detail caching
 
@@ -141,9 +167,10 @@ RedVelvet uses ASP.NET WebForms with `__doPostBack` for pagination. `fetchRedvel
 
 ### Server startup warmup
 
-On `server.listen`, `router.js` fires three background tasks:
-1. `buildRedvelvetAreaHashMap()` — warms the area name → URL cache
-2. `buildRedvelvetTagHashMap()` — warms the tag label → URL cache
-3. `getSessionCookie()` — attempts login if `RV_EMAIL`/`RV_PASSWORD` are set
+On `server.listen`, `router.js` fires four background tasks:
+1. `buildRedvelvetAreaHashMap()` — warms the RV area name → URL cache
+2. `buildRedvelvetTagHashMap()` — warms the RV tag label → URL cache
+3. `buildEsaAreaHashMap()` — warms the ESA area name → URL cache
+4. `getSessionCookie()` — attempts RV login if `RV_EMAIL`/`RV_PASSWORD` are set
 
-All three log errors without throwing, so a warmup failure doesn't crash the server.
+All four log errors without throwing, so a warmup failure doesn't crash the server.
