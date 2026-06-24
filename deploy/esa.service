@@ -1,0 +1,15 @@
+[Unit]
+Description=ESA App
+After=network.target
+
+[Service]
+User=esa
+WorkingDirectory=/opt/esa
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=PORT=5510
+EnvironmentFile=-/etc/esa/env
+
+[Install]
+WantedBy=multi-user.target
