@@ -1209,6 +1209,17 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
   const card = document.createElement('div');
   card.className = 'profile-details-card';
 
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'profile-details-close';
+  closeBtn.title = 'Close profile';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => {
+    exitProfileView();
+    clearProfileDetails();
+    clearImages();
+  });
+  card.appendChild(closeBtn);
+
   // ── Left column: avatar + name + actions ──────────────────────────────
   const leftCol = document.createElement('div');
   leftCol.className = 'profile-details-left';
@@ -1491,7 +1502,18 @@ function renderMergedProfileDetails(group, clickedItem) {
     tabBar.appendChild(tab);
   });
 
+  const mergedCloseBtn = document.createElement('button');
+  mergedCloseBtn.className = 'profile-details-close';
+  mergedCloseBtn.title = 'Close profile';
+  mergedCloseBtn.textContent = '✕';
+  mergedCloseBtn.addEventListener('click', () => {
+    exitProfileView();
+    clearProfileDetails();
+    clearImages();
+  });
+
   tabBar.appendChild(unlinkBtn);
+  tabBar.appendChild(mergedCloseBtn);
   profileDetailsContainer.appendChild(tabBar);
 
   // ── Venue section (collapsed by default) ─────────────────────────────────

@@ -621,12 +621,32 @@ body {
 }
 
 .profile-details-card {
+  position: relative;
   display: flex;
   flex-direction: row;
   gap: 24px;
   padding: 14px 18px;
   background: #16213e;
   align-items: center;
+}
+
+.profile-details-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.profile-details-close:hover {
+  color: #f1f5f9;
+  background: rgba(255,255,255,0.08);
 }
 
 .profile-details-left {
@@ -1455,6 +1475,12 @@ body {
   cursor: pointer;
 }
 .merged-tab-unlink:hover { color: #f87171; border-color: #f87171; }
+
+.merged-tab-bar .profile-details-close {
+  position: static;
+  margin-left: 4px;
+  flex-shrink: 0;
+}
 
 .venue-section {
   margin-bottom: 12px;
