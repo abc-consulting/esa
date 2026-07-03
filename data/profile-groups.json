@@ -71,13 +71,36 @@
         "area": "Durbanville",
         "thumbUrl": "",
         "profileUrl": "https://www.esa.co.za/escorts/viewEscort.php?uid=184528"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "63730",
+        "name": "Sage",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/63730180607733.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Sage/Tyger%20Valley/63730",
+        "phone": "064 077 2161"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "77665",
+        "name": "Lady Katt",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/77665220607606.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Lady%20Katt/Tyger%20Valley/77665",
+        "phone": "064 077 2161"
       }
     ],
     "createdAt": 1782147712135,
     "pairs": {
       "esa:146279|esa:184093": "venue",
       "esa:146279|esa:184528": "venue",
-      "esa:184093|esa:184528": "venue"
+      "esa:184093|esa:184528": "venue",
+      "esa:146279|redvelvet:63730": "profile",
+      "esa:146279|redvelvet:77665": "venue",
+      "esa:184093|redvelvet:63730": "venue",
+      "esa:184528|redvelvet:63730": "venue",
+      "redvelvet:63730|redvelvet:77665": "venue"
     }
   },
   {
@@ -124,7 +147,13 @@
         "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Lexi/Durbanville/83203"
       }
     ],
-    "createdAt": 1782149270028
+    "createdAt": 1782149270028,
+    "pairs": {
+      "redvelvet:81449|redvelvet:83282": "venue",
+      "redvelvet:81449|redvelvet:81526": "venue",
+      "redvelvet:81449|redvelvet:83204": "venue",
+      "redvelvet:81449|redvelvet:83203": "venue"
+    }
   },
   {
     "id": "8ad98261-858d-45b6-a489-7f8873f0b2b9",
@@ -296,31 +325,6 @@
     }
   },
   {
-    "id": "f583ff9f-5dad-4cb9-b0bb-9f6d25dc9fd0",
-    "members": [
-      {
-        "provider": "redvelvet",
-        "uid": "63730",
-        "name": "Sage",
-        "area": "Tyger Valley",
-        "thumbUrl": "https://redvelvet.co.za/uploadimages/63730180607733.jpg",
-        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Sage/Tyger%20Valley/63730",
-        "phone": "064 077 2161"
-      },
-      {
-        "provider": "redvelvet",
-        "uid": "77665",
-        "name": "Lady Katt",
-        "area": "Tyger Valley",
-        "thumbUrl": "https://redvelvet.co.za/uploadimages/77665220607606.jpg",
-        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Lady%20Katt/Tyger%20Valley/77665",
-        "phone": "064 077 2161"
-      }
-    ],
-    "createdAt": 1782192036378,
-    "linkType": "venue"
-  },
-  {
     "id": "a539ac6e-4ada-4ae5-a325-6acffe6bed2f",
     "members": [
       {
@@ -346,6 +350,278 @@
     "linkType": "venue",
     "pairs": {
       "redvelvet:80712|redvelvet:80713": "venue"
+    }
+  },
+  {
+    "id": "064a054d-f8ba-4115-9d02-5e73948af37b",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "79516",
+        "name": "Athena",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/79516220607413.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Athena/Tyger%20Valley/79516",
+        "phone": "074 213 0368"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "81741",
+        "name": "Kay",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/81741220608607.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Kay/Tyger%20Valley/81741",
+        "phone": "074 213 0368"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "62279",
+        "name": "Xena",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/62279220607868.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Xena/Tyger%20Valley/62279",
+        "phone": "074 213 0368"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "76556",
+        "name": "Amelia",
+        "area": "Tyger Valley",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/765560207061711.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Amelia/Tyger%20Valley/76556",
+        "phone": "074 213 0368"
+      }
+    ],
+    "createdAt": 1783074486441,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:79516|redvelvet:81741": "venue",
+      "redvelvet:62279|redvelvet:79516": "venue",
+      "redvelvet:76556|redvelvet:79516": "venue"
+    }
+  },
+  {
+    "id": "1a524666-ef53-4e84-ad67-11e3ea58b1d9",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "83106",
+        "name": "Lara",
+        "area": "Blouberg",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/Escort-8310612505511.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Lara/Blouberg/83106",
+        "phone": "078 552 9267"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "83091",
+        "name": "Zayha",
+        "area": "Table View",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/Escort-8309102205908.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Zayha/Table%20View/83091",
+        "phone": "078 552 9267"
+      }
+    ],
+    "createdAt": 1783074960329,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:83091|redvelvet:83106": "venue"
+    }
+  },
+  {
+    "id": "cb7cc8cf-161f-4dff-bbda-eee434c51237",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "82461",
+        "name": "Sky",
+        "area": "Brackenfell",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/82461080510849.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Sky/Brackenfell/82461",
+        "phone": "067 879 4742"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "82462",
+        "name": "Mitchie",
+        "area": "Brackenfell",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/82462080511206.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Mitchie/Brackenfell/82462",
+        "phone": "067 879 4742"
+      }
+    ],
+    "createdAt": 1783075089656,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:82461|redvelvet:82462": "venue"
+    }
+  },
+  {
+    "id": "d51ef103-e428-4b69-a9d2-b2473864f2d2",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "77837",
+        "name": "Hennessey",
+        "area": "Milnerton",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/77837160306523.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Hennessey/Milnerton/77837",
+        "phone": "075 349 1387"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "63231",
+        "name": "Skylar",
+        "area": "Milnerton",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/632310106075830.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Skylar/Milnerton/63231",
+        "phone": "075 349 1387"
+      }
+    ],
+    "createdAt": 1783075144555,
+    "linkType": "profile",
+    "pairs": {
+      "redvelvet:63231|redvelvet:77837": "profile"
+    }
+  },
+  {
+    "id": "6f53bd66-714c-4838-8663-2f4c10347c63",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "64442",
+        "name": "Ikra",
+        "area": "Kraaifontein",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/64442110611016.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Ikra/Kraaifontein/64442",
+        "phone": "075 420 3683"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "80300",
+        "name": "Kira",
+        "area": "Brackenfell",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/80300110611401.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Kira/Brackenfell/80300",
+        "phone": "075 420 3683"
+      }
+    ],
+    "createdAt": 1783075783809,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:64442|redvelvet:80300": "venue"
+    }
+  },
+  {
+    "id": "76e67905-0dcf-41b5-9178-8840b0031969",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "79338",
+        "name": "Thunder",
+        "area": "Southern Suburbs",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/79338100604230.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Thunder/Southern%20Suburbs/79338",
+        "phone": "079 615 0513"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "83177",
+        "name": "Shyla",
+        "area": "Southern Suburbs",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/Escort-8317710106225.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Shyla/Southern%20Suburbs/83177",
+        "phone": "079 615 0513"
+      }
+    ],
+    "createdAt": 1783079604417,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:79338|redvelvet:83177": "venue"
+    }
+  },
+  {
+    "id": "5e477f25-f665-4cf2-84d8-2d86d197f635",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "53832",
+        "name": "Kelisha",
+        "area": "Wynberg",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/53832010710452.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Kelisha/Wynberg/53832",
+        "phone": "060 239 2162"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "57983",
+        "name": "Dollar",
+        "area": "Southern Suburbs",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/57983190606703.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Dollar/Southern%20Suburbs/57983",
+        "phone": "060 239 2162"
+      }
+    ],
+    "createdAt": 1783079858409,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:53832|redvelvet:57983": "venue"
+    }
+  },
+  {
+    "id": "f793b133-b14f-44ad-9fe6-4a319c9076c7",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "83459",
+        "name": "Mendelssohns Presents Stacey",
+        "area": "Constantia Park",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/83459020707902.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Mendelssohns%20Presents%20Stacey/Constantia%20Park/83459",
+        "phone": "079 176 4174"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "82145",
+        "name": "Mendelssohns Presents Blue Bel",
+        "area": "Constantia Park",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/821450806118891.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Mendelssohns%20Presents%20Blue%20Bel/Constantia%20Park/82145",
+        "phone": "079 176 4174"
+      }
+    ],
+    "createdAt": 1783080587047,
+    "linkType": "venue",
+    "pairs": {
+      "redvelvet:82145|redvelvet:83459": "venue"
+    }
+  },
+  {
+    "id": "2670fe2a-5c88-4178-8bbe-d18bd9a947c0",
+    "members": [
+      {
+        "provider": "redvelvet",
+        "uid": "30194",
+        "name": "Kira",
+        "area": "Stellenbosch",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/30194240710155.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Kira/Stellenbosch/30194",
+        "phone": "071 975 3489"
+      },
+      {
+        "provider": "redvelvet",
+        "uid": "76373",
+        "name": "Kate",
+        "area": "Strand",
+        "thumbUrl": "https://redvelvet.co.za/uploadimages/76373190205490.jpg",
+        "profileUrl": "https://redvelvet.co.za/escorts/escorts_details/Kate/Strand/76373",
+        "phone": "071 975 3489"
+      }
+    ],
+    "createdAt": 1783080645293,
+    "linkType": "profile",
+    "pairs": {
+      "redvelvet:30194|redvelvet:76373": "profile"
     }
   }
 ]

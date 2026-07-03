@@ -10,6 +10,7 @@ import {
 import {
   extractUidFromUrl,
 } from './modules/url-utils.js';
+import { getProviderConfig, providerLabel, makeOnAreaClick } from './modules/providers/provider-config.js';
 import {
   fetchEsaImagesFromProfile,
   fetchEsaProfilesByNickname,
@@ -133,13 +134,12 @@ const SIZE_LEVELS = [
 // ─── DETAIL CACHE ─────────────────────────────────────────────────────────
 
 async function ensureDetailCache(profiles) {
-  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
   const missing = profiles.filter(p => p.provider === 'redvelvet' && !detailCache.has(`${p.provider}:${p.uid}`));
   if (!missing.length) return;
   let done = 0;
   await Promise.all(missing.map(async p => {
     try {
-      const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(p.uid)}`);
+      const res = await fetch(getProviderConfig(p.provider).detailUrl(p.uid));
       if (res.ok) {
         const data = await res.json();
         if (data?.profile) detailCache.set(`${p.provider}:${p.uid}`, data.profile);
@@ -455,13 +455,14 @@ async function fetchSingleProfileData(item) {
   const cached = detailCache.get(cacheKey);
   if (cached) return { profile: cached, images: cached.images || [], videos: cached.videos || [] };
 
-  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  const cfg = getProviderConfig(item.provider);
+
   if (item.provider === 'redvelvet') {
     const uid = /^\d+$/.test(String(item.uid || ''))
       ? String(item.uid)
       : extractUidFromUrl(String(item.profileUrl || ''));
     if (!uid) throw new Error('Could not determine profile ID.');
-    const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(uid)}`);
+    const res = await fetch(cfg.detailUrl(uid));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -518,15 +519,9 @@ async function suggestPhoneLinks(item, profileForPhone) {
       );
       if (!alreadyLinked) {
         try {
-          const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
           let results = [];
-          if (otherProvider === 'esa') {
-            const res = await fetch(`${relayBase}/esa-profiles?nickname=${encodeURIComponent(profileForPhone.name)}`);
-            if (res.ok) results = (await res.json()).profiles || [];
-          } else {
-            const res = await fetch(`${relayBase}/redvelvet-nickname-search?nickname=${encodeURIComponent(profileForPhone.name)}&cityBucket=2`);
-            if (res.ok) results = (await res.json()).profiles || [];
-          }
+          const res = await fetch(getProviderConfig(otherProvider).nicknameSearchUrl(profileForPhone.name));
+          if (res.ok) results = (await res.json()).profiles || [];
           for (const p of results) {
             const k = `${p.provider}:${p.uid}`;
             if (seenKeys.has(k)) continue;
@@ -564,9 +559,12 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
   const cacheKey = `${item.provider}:${item.uid}`;
   const cachedProfile = detailCache.get(cacheKey);
 
+  const effectiveProvider = item.provider || activeProvider;
+  const cfg = getProviderConfig(effectiveProvider);
+
   if (cachedProfile) {
     data = { profile: cachedProfile, images: cachedProfile.images || [], videos: cachedProfile.videos || [] };
-  } else if (item.provider === 'redvelvet' || activeProvider === 'redvelvet') {
+  } else if (effectiveProvider === 'redvelvet') {
     const uid = /^\d+$/.test(String(item.uid || ''))
       ? String(item.uid)
       : extractUidFromUrl(String(item.profileUrl || ''));
@@ -575,7 +573,7 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
     setStatus('<span class="spinner"></span>Fetching profile…');
     searchBtn.disabled = true;
     try {
-      const res = await fetch(`${relayBase}/redvelvet-profile-details?id=${encodeURIComponent(uid)}`);
+      const res = await fetch(cfg.detailUrl(uid));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -592,15 +590,12 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
     if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
   }
 
-  const onAreaClickRv = p => fetchRedvelvetProfilesByArea(p.area);
-  const onAreaClickEsa = p => {
-    activeAreas.clear(); excludedAreas.clear();
-    activeAreas.add(p.area);
-    updateFilterChips(); runEsaSearch();
-  };
   renderProfileDetails(data.profile, {
-    onAreaClick: (item.provider === 'redvelvet' || activeProvider === 'redvelvet') ? onAreaClickRv : onAreaClickEsa,
-    onTagClick: data.profile?.provider === 'redvelvet' ? tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); } : null,
+    onAreaClick: makeOnAreaClick(effectiveProvider, {
+      redvelvet: area => fetchRedvelvetProfilesByArea(area),
+      esa: area => { activeAreas.clear(); excludedAreas.clear(); activeAreas.add(area); updateFilterChips(); runEsaSearch(); },
+    }),
+    onTagClick: cfg.hasTags ? tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); } : null,
   });
 
   suggestPhoneLinks(item, data.profile);
@@ -622,7 +617,7 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
   const totalCount = galleryImageUrls.length + videos.length;
   setStatus(`Found ${totalCount} media item${totalCount === 1 ? '' : 's'}.`);
   profileDetailsContainer.scrollIntoView({ behavior: 'smooth' });
-  setTimeout(() => renderImages(videos), (item.provider === 'redvelvet' || activeProvider === 'redvelvet') ? 300 : 500);
+  setTimeout(() => renderImages(videos), cfg.imageRenderDelay);
 }
 
 const LINK_TYPES = ['profile', 'venue', 'unknown', 'unrelated'];
@@ -683,7 +678,7 @@ function showPhoneLinkModal(currentProfile, peers, opts = {}) {
     peerName.textContent = peer.name || `UID ${peer.uid}`;
     const peerArea = document.createElement('div');
     peerArea.className = 'phone-link-peer-area';
-    peerArea.textContent = peer.area || (peer.provider === 'redvelvet' ? 'RV' : 'ESA');
+    peerArea.textContent = peer.area || providerLabel(peer.provider);
     info.append(peerName, peerArea);
 
     const badge = document.createElement('button');
@@ -1073,7 +1068,7 @@ const CARD_PLACEHOLDER = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/
 function buildProfileCard(item, index, { onClickExtra, onProfileClick } = {}) {
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
   const toCardImageUrl = (url) => (url && /^https?:\/\//i.test(url)) ? `${relayBase}/image?url=${encodeURIComponent(url)}` : url;
-  const buildFallback = (card) => (card?.provider === 'redvelvet' && card?.uid) ? 'https://redvelvet.co.za/Assets/images/noimage.png' : '';
+  const buildFallback = (card) => card?.uid ? getProviderConfig(card.provider).fallbackThumb : '';
 
   const uid      = item.uid;
   const namePart = item.name || `UID ${uid}`;
@@ -1274,7 +1269,7 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
       linkBtn.className = 'profile-link-btn is-linked';
       linkBtn.title = peers.map(m => {
         const t = getPairLinkType(g, profile.provider, profile.uid, m.provider, m.uid);
-        return `${m.name} (${m.provider === 'redvelvet' ? 'RV' : 'ESA'}) · ${t}`;
+        return `${m.name} (${providerLabel(m.provider)}) · ${t}`;
       }).join(', ');
     } else {
       linkBtn.textContent = 'Link profile';
@@ -1421,7 +1416,7 @@ function renderVenueSection(members, currentProvider) {
     thumb.src = thumbSrc || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="100%" height="100%" fill="%23334155"/></svg>';
     thumb.alt = member.name || '';
     const info = document.createElement('span');
-    const provLabels = [...new Set(clusterMembers.map(m => m.member.provider === 'redvelvet' ? 'RV' : 'ESA'))].join('/');
+    const provLabels = [...new Set(clusterMembers.map(m => providerLabel(m.member.provider)))].join('/');
     info.textContent = `${member.name} (${provLabels})`;
     row.append(thumb, info);
     row.addEventListener('click', () => {
@@ -1491,8 +1486,7 @@ function renderMergedProfileDetails(group, clickedItem) {
   tabMembers.forEach((m, i) => {
     const tab = document.createElement('button');
     tab.className = 'merged-tab' + (i === 0 ? ' active' : '');
-    const prov = m.provider === 'redvelvet' ? 'RV' : 'ESA';
-    tab.textContent = `${m.name} (${prov})`;
+    tab.textContent = `${m.name} (${providerLabel(m.provider)})`;
     tab.addEventListener('click', () => switchTab(i));
     tabBar.appendChild(tab);
   });
@@ -1604,16 +1598,11 @@ function renderMergedProfileDetails(group, clickedItem) {
 
     renderProfileDetails(result, {
       skipClear: true,
-      onAreaClick: p => {
-        if (p.provider === 'redvelvet') {
-          fetchRedvelvetProfilesByArea(p.area);
-        } else {
-          activeAreas.clear(); excludedAreas.clear();
-          activeAreas.add(p.area);
-          updateFilterChips(); runEsaSearch();
-        }
-      },
-      onTagClick: result.provider === 'redvelvet'
+      onAreaClick: makeOnAreaClick(result.provider, {
+        redvelvet: area => fetchRedvelvetProfilesByArea(area),
+        esa: area => { activeAreas.clear(); excludedAreas.clear(); activeAreas.add(area); updateFilterChips(); runEsaSearch(); },
+      }),
+      onTagClick: getProviderConfig(result.provider).hasTags
         ? tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); }
         : null,
     });
