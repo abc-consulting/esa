@@ -3,8 +3,40 @@
 const { ESA_BASE_URL, CACHE_TTL_MS } = require('../constants');
 const { fetchText, send } = require('../utils/http');
 const { decodeHtmlEntities } = require('../utils/html');
+const { getDb } = require('../db');
+const { upsertProfileCard, upsertProfileDetails, loadProfileImageDocs, fetchPendingBinaries } = require('../utils/db-profiles');
 
-const detailCache = new Map(); // uid → { data, fetchedAt }
+const detailCache = new Map(); // uid → { data, fetchedAt }  (in-memory L1)
+
+async function getCachedDetail(uid) {
+  const mem = detailCache.get(uid);
+  if (mem && Date.now() - mem.fetchedAt < CACHE_TTL_MS) return mem.data;
+  try {
+    const db  = await getDb();
+    const doc = await db.collection('profileCache').findOne({ uid, provider: 'esa' });
+    if (doc) {
+      const age = Date.now() - new Date(doc.fetchedAt).getTime();
+      if (age < CACHE_TTL_MS) {
+        detailCache.set(uid, { data: doc.data, fetchedAt: new Date(doc.fetchedAt).getTime() });
+        return doc.data;
+      }
+    }
+  } catch { /* fall through to fetch */ }
+  return null;
+}
+
+async function setCachedDetail(uid, data) {
+  const fetchedAt = Date.now();
+  detailCache.set(uid, { data, fetchedAt });
+  try {
+    const db = await getDb();
+    await db.collection('profileCache').updateOne(
+      { uid, provider: 'esa' },
+      { $set: { uid, provider: 'esa', data, fetchedAt: new Date(fetchedAt) } },
+      { upsert: true }
+    );
+  } catch { /* non-fatal — in-memory cache still works */ }
+}
 
 function parseEsaProfileDetails(uid, html) {
   // Name from <h2>
@@ -97,21 +129,74 @@ function normalizeGalleryUrl(raw) {
   return absolute.replace(/size=(?:medium|small|thumb_blur|original)/i, 'size=large');
 }
 
-async function fetchEsaProfileDetails(uid) {
-  const cached = detailCache.get(uid);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+function buildImageResponse(imgDocs) {
+  return imgDocs
+    .filter(d => d.type !== 'video')
+    .map(d => ({ uid: d.uid, url: d.url, quality: d.quality || null, stored: !!d.fileId }));
+}
+
+async function fetchEsaProfileDetails(uid, scrape = false) {
+  const relayBase = `http://localhost:${process.env.PORT || require('../constants').PORT}`;
+
+  if (!scrape) {
+    // DB-first: profile has been detail-scraped before
+    try {
+      const db  = await getDb();
+      const doc = await db.collection('profiles').findOne({ provider: 'esa', providerUid: uid });
+      if (doc && doc.age !== undefined) {
+        const imgDocs = doc.images && doc.images.length
+          ? await loadProfileImageDocs(db, doc._id)
+          : [];
+
+        const allStored = imgDocs.length > 0 && imgDocs.every(d => d.fileId);
+        if (!allStored) fetchPendingBinaries(db, doc._id, relayBase);
+
+        return {
+          profile: {
+            uid,
+            name:       doc.name,
+            area:       doc.areaName || '',
+            profileUrl: doc.profileUrl,
+            thumbUrl:   doc.thumbUrl,
+            phone:      doc.phone || '',
+            age:        doc.age   || '',
+          },
+          images: buildImageResponse(imgDocs),
+          videos: [],
+        };
+      }
+    } catch { /* fall through to cache/scrape */ }
+
+    const cached = await getCachedDetail(uid);
+    if (cached) return cached;
+  }
 
   const url = `${ESA_BASE_URL}/escorts/viewEscort.php?uid=${encodeURIComponent(uid)}`;
   const html = await fetchText(url);
   const data = parseEsaProfileDetails(uid, html);
 
-  detailCache.set(uid, { data, fetchedAt: Date.now() });
+  await setCachedDetail(uid, data);
+
+  // Write to DB then kick off background binary fetch
+  getDb().then(async db => {
+    const card = { provider: 'esa', uid, ...data.profile };
+    const { _id } = await upsertProfileCard(db, new Map(), card);
+    await upsertProfileDetails(db, _id, {
+      age:        data.profile.age,
+      imageUrls:  data.images,
+      imageTypes: data.images.map(() => 'image'),
+    });
+    // Binaries not yet stored — fetch in background
+    fetchPendingBinaries(db, _id, relayBase);
+  }).catch(() => {});
+
   return data;
 }
 
 async function handleEsaProfileDetails(req, res) {
   const urlObj = new URL(req.url, 'http://localhost');
-  const id = urlObj.searchParams.get('id') || '';
+  const id     = urlObj.searchParams.get('id')     || '';
+  const scrape = urlObj.searchParams.get('scrape') === 'true';
 
   if (!/^\d+$/.test(id)) {
     send(res, 400, JSON.stringify({ error: 'id must be numeric' }), { 'Content-Type': 'application/json; charset=utf-8' });
@@ -119,7 +204,7 @@ async function handleEsaProfileDetails(req, res) {
   }
 
   try {
-    const data = await fetchEsaProfileDetails(id);
+    const data = await fetchEsaProfileDetails(id, scrape);
     send(res, 200, JSON.stringify(data), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',

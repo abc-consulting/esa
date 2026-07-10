@@ -1,16 +1,58 @@
 'use strict';
 
 const { send } = require('../utils/http');
+const { upsertProfileCard, upsertProfileDetails, loadProfileImageDocs, fetchPendingBinaries } = require('../utils/db-profiles');
 const { decodeHtmlEntities, stripTags } = require('../utils/html');
 const { findAreaEntryByName, buildRedvelvetAreaHashMap } = require('./areas');
 const { getSessionCookie, clearSessionCookie } = require('./auth');
 const { REQUEST_TIMEOUT_MS, CACHE_TTL_MS } = require('../constants');
 const { URL } = require('url');
+const { getDb } = require('../db');
 
 const REDVELVET_BASE = 'https://redvelvet.co.za';
 
-const metaCache   = new Map(); // uid → { data: parsed meta, fetchedAt }
-const detailCache = new Map(); // uid → { data: { profile, directImages, videos }, fetchedAt }
+const metaCache   = new Map(); // uid → { data: parsed meta, fetchedAt }  (in-memory L1)
+const detailCache = new Map(); // uid → { data: { profile, images, videos }, fetchedAt }  (in-memory L1)
+
+async function getDbMeta(uid) {
+  try {
+    const db  = await getDb();
+    const doc = await db.collection('profileCache').findOne({ uid: String(uid), provider: 'redvelvet-meta' });
+    if (doc && Date.now() - new Date(doc.fetchedAt).getTime() < CACHE_TTL_MS) return doc.data;
+  } catch { /* non-fatal */ }
+  return null;
+}
+
+async function setDbMeta(uid, data) {
+  try {
+    const db = await getDb();
+    await db.collection('profileCache').updateOne(
+      { uid: String(uid), provider: 'redvelvet-meta' },
+      { $set: { uid: String(uid), provider: 'redvelvet-meta', data, fetchedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch { /* non-fatal */ }
+}
+
+async function getDbDetail(uid) {
+  try {
+    const db  = await getDb();
+    const doc = await db.collection('profileCache').findOne({ uid: String(uid), provider: 'redvelvet' });
+    if (doc && Date.now() - new Date(doc.fetchedAt).getTime() < CACHE_TTL_MS) return doc.data;
+  } catch { /* non-fatal */ }
+  return null;
+}
+
+async function setDbDetail(uid, data) {
+  try {
+    const db = await getDb();
+    await db.collection('profileCache').updateOne(
+      { uid: String(uid), provider: 'redvelvet' },
+      { $set: { uid: String(uid), provider: 'redvelvet', data, fetchedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch { /* non-fatal */ }
+}
 
 function toAbsolute(src, base = REDVELVET_BASE) {
   if (!src) return '';
@@ -162,8 +204,14 @@ async function fetchAuthenticated(url, returnFinalUrl = false) {
 }
 
 async function fetchProfileMeta(uid) {
-  const cached = metaCache.get(uid);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+  const mem = metaCache.get(uid);
+  if (mem && Date.now() - mem.fetchedAt < CACHE_TTL_MS) return mem.data;
+
+  const dbMeta = await getDbMeta(uid);
+  if (dbMeta) {
+    metaCache.set(String(uid), { data: dbMeta, fetchedAt: Date.now() });
+    return dbMeta;
+  }
 
   const profileUrl = `${REDVELVET_BASE}/escorts/escorts_details.aspx?userid=${uid}`;
   const { html, finalUrl } = await fetchAuthenticated(profileUrl, true);
@@ -188,7 +236,9 @@ async function fetchProfileMeta(uid) {
     _parsed: { images: parsed.images, videoPageUrl: parsed.videoPageUrl, rawPageUrl: parsed.rawPageUrl },
   };
 
-  metaCache.set(String(uid), { data, fetchedAt: Date.now() });
+  const fetchedAt = Date.now();
+  metaCache.set(String(uid), { data, fetchedAt });
+  await setDbMeta(uid, data);
   return data;
 }
 
@@ -198,8 +248,13 @@ async function fetchRedvelvetProfileDetails(profileUrl) {
   const uid = uidMatch ? uidMatch[1] : null;
 
   if (uid) {
-    const cached = detailCache.get(uid);
-    if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) return cached.data;
+    const mem = detailCache.get(uid);
+    if (mem && Date.now() - mem.fetchedAt < CACHE_TTL_MS) return mem.data;
+    const dbDetail = await getDbDetail(uid);
+    if (dbDetail) {
+      detailCache.set(uid, { data: dbDetail, fetchedAt: Date.now() });
+      return dbDetail;
+    }
   }
 
   // Use meta cache if available to avoid re-fetching the profile page
@@ -243,13 +298,39 @@ async function fetchRedvelvetProfileDetails(profileUrl) {
   }
 
   const result = { profile, images: allImages, videos: videosFromPage };
-  if (uid) detailCache.set(uid, { data: result, fetchedAt: Date.now() });
+  if (uid) {
+    detailCache.set(uid, { data: result, fetchedAt: Date.now() });
+    await setDbDetail(uid, result);
+
+    // Write enriched data back to the profiles collection (non-fatal)
+    getDb().then(db => {
+      const card = { provider: 'redvelvet', uid, ...profile };
+      return upsertProfileCard(db, new Map(), card).then(({ _id }) =>
+        upsertProfileDetails(db, _id, {
+          age:        profile.age,
+          bust:       profile.bust,
+          tags:       profile.tags,
+          imageUrls:  allImages,
+          imageTypes: allImages.map(() => 'image'),
+        })
+      );
+    }).catch(() => {});
+  }
   return result;
+}
+
+// Build the images array for the response from profileImages docs.
+// Each entry: { uid, url, quality, stored } where stored=true means the binary is in GridFS.
+function buildImageResponse(imgDocs) {
+  return imgDocs
+    .filter(d => d.type !== 'video')
+    .map(d => ({ uid: d.uid, url: d.url, quality: d.quality || null, stored: !!d.fileId }));
 }
 
 async function handleRedvelvetProfileDetails(req, res, serverBase) {
   const incoming = new URL(req.url, serverBase);
-  const rawId = (incoming.searchParams.get('id') || '').trim();
+  const rawId  = (incoming.searchParams.get('id')     || '').trim();
+  const scrape = incoming.searchParams.get('scrape') === 'true';
 
   if (!rawId || !/^\d+$/.test(rawId)) {
     send(res, 400, JSON.stringify({ error: 'Missing or invalid id param (must be numeric)' }), {
@@ -258,10 +339,72 @@ async function handleRedvelvetProfileDetails(req, res, serverBase) {
     return;
   }
 
+  const relayBase = `http://localhost:${process.env.PORT || require('../constants').PORT}`;
+
+  // ── DB-first path ─────────────────────────────────────────────────────────
+  if (!scrape) {
+    try {
+      const db  = await getDb();
+      const doc = await db.collection('profiles').findOne({ provider: 'redvelvet', providerUid: rawId });
+
+      if (doc && doc.age !== undefined) {
+        const imgDocs = doc.images && doc.images.length
+          ? await loadProfileImageDocs(db, doc._id)
+          : [];
+
+        const allStored = imgDocs.length > 0 && imgDocs.every(d => d.type === 'video' || d.fileId);
+
+        // Kick off background binary fetch for any images not yet stored
+        if (!allStored) {
+          fetchPendingBinaries(db, doc._id, relayBase);
+        }
+
+        const result = {
+          profile: {
+            uid:        doc.providerUid,
+            name:       doc.name,
+            area:       '',
+            profileUrl: doc.profileUrl,
+            thumbUrl:   doc.thumbUrl,
+            phone:      doc.phone || '',
+            age:        doc.age   || '',
+            bust:       doc.bust  || '',
+            tags:       doc.tags  || [],
+          },
+          images: buildImageResponse(imgDocs),
+          videos: imgDocs.filter(d => d.type === 'video').map(d => d.url),
+        };
+        send(res, 200, JSON.stringify(result), {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        });
+        return;
+      }
+    } catch { /* fall through to scrape */ }
+  }
+
+  // ── Scrape path ───────────────────────────────────────────────────────────
   const profileUrl = `${REDVELVET_BASE}/escorts/escorts_details.aspx?userid=${rawId}`;
 
   try {
-    const result = await fetchRedvelvetProfileDetails(profileUrl);
+    const scraped = await fetchRedvelvetProfileDetails(profileUrl);
+
+    // After scrape, fetch the freshly-written profileImages docs so we return uids
+    let imgDocs = [];
+    try {
+      const db  = await getDb();
+      const doc = await db.collection('profiles').findOne({ provider: 'redvelvet', providerUid: rawId });
+      if (doc) {
+        imgDocs = await loadProfileImageDocs(db, doc._id);
+        // Binaries won't be stored yet — kick off background fetch
+        fetchPendingBinaries(db, doc._id, relayBase);
+      }
+    } catch { /* non-fatal — fall back to raw url list */ }
+
+    const result = imgDocs.length
+      ? { ...scraped, images: buildImageResponse(imgDocs), videos: imgDocs.filter(d => d.type === 'video').map(d => d.url) }
+      : scraped;
+
     send(res, 200, JSON.stringify(result), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',

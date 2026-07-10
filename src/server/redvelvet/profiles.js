@@ -6,6 +6,8 @@ const { send, fetchText } = require('../utils/http');
 const { getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap, fetchRedvelvetProfilesWithPostback } = require('./areas');
 const { resolveRedvelvetTagUrl } = require('./tags');
 const { URL } = require('url');
+const { getDb } = require('../db');
+const { upsertProfileCards } = require('../utils/db-profiles');
 
 const TAG_OVERRIDES_PATH = path.join(__dirname, '../../../tag-overrides.json');
 const REDVELVET_BASE = 'https://redvelvet.co.za';
@@ -42,16 +44,33 @@ async function handleRedvelvetProfileLookup(req, res) {
 }
 
 async function handleRedvelvetTagProfiles(req, res, serverBase) {
-  const incoming = new URL(req.url, serverBase);
-  const tag = (incoming.searchParams.get('tag') || '').trim();
-  const tagUrl = (incoming.searchParams.get('tagUrl') || '').trim();
+  const incoming   = new URL(req.url, serverBase);
+  const tag        = (incoming.searchParams.get('tag')        || '').trim();
+  const tagUrl     = (incoming.searchParams.get('tagUrl')     || '').trim();
   const cityBucket = (incoming.searchParams.get('cityBucket') || '2').trim();
+  const scrape     = incoming.searchParams.get('scrape') === 'true';
 
   if (!tag && !tagUrl) {
     send(res, 400, JSON.stringify({ error: 'Missing tag or tagUrl' }), {
       'Content-Type': 'application/json; charset=utf-8',
     });
     return;
+  }
+
+  // DB-first path (tags are only present after a detail scrape, so fall through if empty)
+  if (!scrape && tag) {
+    try {
+      const db   = await getDb();
+      const docs = await db.collection('profiles').find({ provider: 'redvelvet', tags: tag }).toArray();
+      if (docs.length > 0) {
+        const areaIds = [...new Set(docs.filter(p => p.areaId).map(p => p.areaId))];
+        const areas   = areaIds.length ? await db.collection('areas').find({ _id: { $in: areaIds } }).toArray() : [];
+        const areaMap = new Map(areas.map(a => [String(a._id), a.name]));
+        const profiles = docs.map(p => ({ provider: 'redvelvet', uid: p.providerUid, name: p.name, area: areaMap.get(String(p.areaId)) || '', profileUrl: p.profileUrl, thumbUrl: p.thumbUrl, phone: p.phone || '' }));
+        send(res, 200, JSON.stringify({ tag, tagUrl: '', cityBucket, beforeCount: profiles.length, count: profiles.length, profiles }), { 'Content-Type': 'application/json; charset=utf-8' });
+        return;
+      }
+    } catch { /* fall through */ }
   }
 
   try {
@@ -91,6 +110,7 @@ async function handleRedvelvetTagProfiles(req, res, serverBase) {
       stubs.filter(Boolean).forEach(p => filteredProfiles.push(p));
     }
 
+    if (scrape) getDb().then(db => upsertProfileCards(db, filteredProfiles)).catch(() => {});
     send(res, 200, JSON.stringify({
       tag,
       tagUrl: resolvedTagUrl,

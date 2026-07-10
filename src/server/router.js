@@ -24,6 +24,8 @@ const { handleEsaAreas } = require('./esa/areas-list');
 const { handleEsaSearch } = require('./esa/search');
 const { handleGetProfileGroups, handleSaveProfileGroups } = require('./profile-groups');
 const { handleGetFavorites, handleSaveFavorites } = require('./favorites');
+const { handleImageErrorReport, handleGetImageErrors } = require('./image-errors');
+const { syncAreasFromHashMaps } = require('./db');
 
 const server = http.createServer(async (req, res) => {
   const serverBase = `http://${req.headers.host || `localhost:${PORT}`}`;
@@ -129,6 +131,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST') { await handleSaveFavorites(req, res); return; }
   }
 
+  if (req.url === '/image-errors') {
+    if (req.method === 'GET') { await handleGetImageErrors(req, res); return; }
+    if (req.method === 'POST') { await handleImageErrorReport(req, res); return; }
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     send(res, 405, 'Method not allowed');
     return;
@@ -139,9 +146,11 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`ESA app server running at http://localhost:${PORT}`);
-  buildRedvelvetAreaHashMap().catch(err => console.error('Area hashmap warmup failed:', err));
+  Promise.all([
+    buildRedvelvetAreaHashMap().catch(err => { console.error('Area hashmap warmup failed:', err); return new Map(); }),
+    buildEsaAreaHashMap().catch(err => { console.error('[ESA] Area hashmap warmup failed:', err); return new Map(); }),
+  ]).then(([rvMap, esaMap]) => syncAreasFromHashMaps(esaMap, rvMap));
   buildRedvelvetTagHashMap().catch(err => console.error('Tag hashmap warmup failed:', err));
-  buildEsaAreaHashMap().catch(err => console.error('[ESA] Area hashmap warmup failed:', err));
   if (!process.env.RV_EMAIL || !process.env.RV_PASSWORD) {
     console.warn('[RV Auth] RV_EMAIL / RV_PASSWORD not set — fetching without login');
   } else {

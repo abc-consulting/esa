@@ -10,7 +10,7 @@ import {
 import {
   extractUidFromUrl,
 } from './modules/url-utils.js';
-import { getProviderConfig, providerLabel, makeOnAreaClick } from './modules/providers/provider-config.js';
+import { PROVIDER_CONFIG, getProviderConfig, providerLabel, makeOnAreaClick } from './modules/providers/provider-config.js';
 import {
   fetchEsaImagesFromProfile,
   fetchEsaProfilesByNickname,
@@ -70,10 +70,12 @@ const {
 
 // ─── STATE ────────────────────────────────────────────────────────────────
 
-let profileLinks      = [];
-let galleryImageUrls  = [];
-let failedImages      = new Set();
-let activeProvider    = 'esa';
+let profileLinks        = [];
+let galleryImageUrls    = [];
+let failedImages        = new Set();
+let activeProvider      = 'esa';
+let scrapeMode          = false;
+let activeProfileMeta   = null; // { uid, provider, name } of the currently open profile
 let filterKeyword     = '';
 let activeTags   = new Set();
 let excludedTags = new Set();
@@ -83,6 +85,16 @@ let detailCache        = new Map();
 let ageMin = null, ageMax = null, selectedBand = null, selectedCup = '', sizeMinVol = null, sizeMaxVol = null;
 let pendingLinkSource  = null;
 const dismissedSuggestions = new Set();
+
+// ─── IMAGE LIST HELPERS ───────────────────────────────────────────────────
+
+// Normalise images from either the old string[] format or the new { uid, url, quality, stored }[]
+// so the rest of the client always works with objects.
+function normalizeImageList(images) {
+  return images.map(img =>
+    typeof img === 'string' ? { uid: null, url: img, quality: null, stored: false } : img
+  );
+}
 
 // ─── BUST SIZE HELPERS ────────────────────────────────────────────────────
 
@@ -378,6 +390,17 @@ function recordFailedImage(url) {
   if (!url) return;
   failedImages.add(url);
   renderFailedImagesPanel();
+  const body = { url };
+  if (activeProfileMeta) {
+    body.profileId   = activeProfileMeta.uid;
+    body.profileName = activeProfileMeta.name;
+    body.provider    = activeProfileMeta.provider;
+  }
+  fetch(`${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/image-errors`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  }).catch(() => {});
 }
 
 // ─── SEARCH ENTRY POINTS ──────────────────────────────────────────────────
@@ -462,14 +485,14 @@ async function fetchSingleProfileData(item) {
       ? String(item.uid)
       : extractUidFromUrl(String(item.profileUrl || ''));
     if (!uid) throw new Error('Could not determine profile ID.');
-    const res = await fetch(cfg.detailUrl(uid));
+    const res = await fetch(cfg.detailUrl(uid, scrapeMode));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data.error) throw new Error(data.error);
     if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
     return data;
   } else {
-    const data = await fetchEsaImagesFromProfile(item.uid, { setStatus: () => {}, searchBtn: { disabled: false } });
+    const data = await fetchEsaImagesFromProfile(item.uid, { setStatus: () => {}, searchBtn: { disabled: false }, scrapeMode });
     if (!data) throw new Error('Failed to fetch ESA profile.');
     if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
     return data;
@@ -539,7 +562,7 @@ async function suggestPhoneLinks(item, profileForPhone) {
   if (peers.length > 0) showPhoneLinkModal(profileForPhone, peers);
 }
 
-async function fetchImagesFromProfile(item, { single = false } = {}) {
+async function fetchImagesFromProfile(item, { single = false, forceScrape = false } = {}) {
   if (single) {
     clearProfileDetails();
     clearImages();
@@ -562,7 +585,9 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
   const effectiveProvider = item.provider || activeProvider;
   const cfg = getProviderConfig(effectiveProvider);
 
-  if (cachedProfile) {
+  const shouldScrape = scrapeMode || forceScrape;
+
+  if (cachedProfile && !forceScrape) {
     data = { profile: cachedProfile, images: cachedProfile.images || [], videos: cachedProfile.videos || [] };
   } else if (effectiveProvider === 'redvelvet') {
     const uid = /^\d+$/.test(String(item.uid || ''))
@@ -573,7 +598,7 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
     setStatus('<span class="spinner"></span>Fetching profile…');
     searchBtn.disabled = true;
     try {
-      const res = await fetch(cfg.detailUrl(uid));
+      const res = await fetch(cfg.detailUrl(uid, shouldScrape));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -585,7 +610,7 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
     searchBtn.disabled = false;
     if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
   } else {
-    data = await fetchEsaImagesFromProfile(item.uid, { setStatus, searchBtn });
+    data = await fetchEsaImagesFromProfile(item.uid, { setStatus, searchBtn, scrapeMode: shouldScrape });
     if (!data) return;
     if (data.profile) detailCache.set(cacheKey, { ...data.profile, images: data.images || [], videos: data.videos || [] });
   }
@@ -596,6 +621,10 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
       esa: area => { activeAreas.clear(); excludedAreas.clear(); activeAreas.add(area); updateFilterChips(); runEsaSearch(); },
     }),
     onTagClick: cfg.hasTags ? tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); } : null,
+    onRescrape: () => {
+      detailCache.delete(cacheKey);
+      fetchImagesFromProfile(item, { single: true, forceScrape: true });
+    },
   });
 
   suggestPhoneLinks(item, data.profile);
@@ -612,7 +641,7 @@ async function fetchImagesFromProfile(item, { single = false } = {}) {
     }
   }
 
-  galleryImageUrls = data.images || [];
+  galleryImageUrls = normalizeImageList(data.images || []);
   const videos     = data.videos || [];
   const totalCount = galleryImageUrls.length + videos.length;
   setStatus(`Found ${totalCount} media item${totalCount === 1 ? '' : 's'}.`);
@@ -647,7 +676,7 @@ function showPhoneLinkModal(currentProfile, peers, opts = {}) {
 
   const title = document.createElement('div');
   title.className = 'phone-link-modal-title';
-  title.textContent = opts.existingGroup ? 'Manage linked profiles' : 'Same phone number detected';
+  title.textContent = opts.title || (opts.existingGroup ? 'Manage linked profiles' : 'Same phone number detected');
   box.appendChild(title);
 
   const subtitle = document.createElement('div');
@@ -915,7 +944,7 @@ async function runRedvelvetSearch() {
     const res = await fetch(`${relayBase}/redvelvet-search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, scrape: scrapeMode }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -955,7 +984,7 @@ async function runEsaSearch() {
     const res = await fetch(`${relayBase}/esa-search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ ...body, scrape: scrapeMode }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -1202,9 +1231,10 @@ function renderProfileCards() {
 }
 
 
-function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = false } = {}) {
+function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = false, onRescrape = null } = {}) {
   if (!skipClear) clearProfileDetails();
   contentLayout?.classList.add('has-profile');
+  if (profile) activeProfileMeta = { uid: profile.uid, provider: profile.provider, name: profile.name };
 
   const card = document.createElement('div');
   card.className = 'profile-details-card';
@@ -1301,7 +1331,15 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
     }
   });
 
-  actionsRow.append(areaBtn, favoriteBtn, linkBtn);
+  const rescrapeBtn = document.createElement('button');
+  rescrapeBtn.className   = 'profile-rescrape-btn';
+  rescrapeBtn.textContent = 'Re-scrape';
+  rescrapeBtn.title       = 'Force a fresh scrape of this profile';
+  rescrapeBtn.addEventListener('click', () => {
+    if (onRescrape) onRescrape();
+  });
+
+  actionsRow.append(areaBtn, favoriteBtn, linkBtn, rescrapeBtn);
   nameActionsCol.appendChild(actionsRow);
   leftCol.appendChild(nameActionsCol);
 
@@ -1369,6 +1407,59 @@ function renderProfileDetails(profile, { onAreaClick, onTagClick, skipClear = fa
   }
 
   card.append(leftCol, rightCol);
+
+  // ── Find matching profile ─────────────────────────────────────────────────
+  const allProviders = Object.keys(PROVIDER_CONFIG);
+  const otherProviders = allProviders.filter(p => p !== profile.provider);
+
+  if (otherProviders.length && profile.name) {
+    const matchSection = document.createElement('div');
+    matchSection.className = 'profile-match-section';
+
+    const matchLabel = document.createElement('span');
+    matchLabel.className   = 'profile-match-label';
+    matchLabel.textContent = 'Find matching profile';
+    matchSection.appendChild(matchLabel);
+
+    otherProviders.forEach(providerKey => {
+      const cfg = getProviderConfig(providerKey);
+      const btn = document.createElement('button');
+      btn.className   = 'profile-match-btn';
+      btn.textContent = `Search ${cfg.label}`;
+
+      btn.addEventListener('click', async () => {
+        btn.disabled    = true;
+        btn.textContent = `Searching ${cfg.label}…`;
+
+        try {
+          const res = await fetch(cfg.nicknameSearchUrl(profile.name, false));
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const peers = (data.profiles || []).map(p => ({ ...p, provider: p.provider || providerKey }));
+
+          if (!peers.length) {
+            btn.textContent = `No results on ${cfg.label}`;
+            btn.disabled    = false;
+            setTimeout(() => { btn.textContent = `Search ${cfg.label}`; }, 3000);
+            return;
+          }
+
+          showPhoneLinkModal(profile, peers, { title: `Matches on ${cfg.label}` });
+          btn.textContent = `Search ${cfg.label}`;
+        } catch (err) {
+          btn.textContent = `Error: ${err.message}`;
+          setTimeout(() => { btn.textContent = `Search ${cfg.label}`; }, 3000);
+        }
+
+        btn.disabled = false;
+      });
+
+      matchSection.appendChild(btn);
+    });
+
+    card.appendChild(matchSection);
+  }
+
   profileDetailsContainer.appendChild(card);
 
   // Show FAB now that has-profile is active
@@ -1572,24 +1663,28 @@ function renderMergedProfileDetails(group, clickedItem) {
     // Populate gallery wrapper if not yet done
     if (wrapper.dataset.loaded === 'false') {
       wrapper.dataset.loaded = 'true';
-      const images = result.images || [];
+      const images = normalizeImageList(result.images || []);
       const videos = result.videos || [];
       const profileName = (result.name || 'profile').replace(/[\\/:*?"<>|]/g, '_');
       let slot = 0;
 
-      images.forEach((url, idx) => {
+      images.forEach((imgObj, idx) => {
+        const sourceUrl = imgObj.url;
+        const relayUrl  = imgObj.uid
+          ? `${relayBase}/image?id=${encodeURIComponent(imgObj.uid)}`
+          : toRelayImageUrl(sourceUrl);
         const img = document.createElement('img');
         img.alt = 'gallery image';
-        img.src = toDisplayImageUrl(url);
         img.className = 'masonry-img';
         img.style.animationDelay = `${slot * 60}ms`;
-        img.dataset.sourceUrl = url;
-        const filename = `${profileName}_${String(idx + 1).padStart(3, '0')}${inferImageExt(url)}`;
+        img.dataset.sourceUrl = sourceUrl;
+        const filename = `${profileName}_${String(idx + 1).padStart(3, '0')}${inferImageExt(sourceUrl)}`;
         img.onerror = function () {
           recordFailedImage(this.dataset.sourceUrl || this.currentSrc || '');
           this.closest('.masonry-item')?.remove() ?? this.remove();
         };
-        wrapper.appendChild(wrapImageInItem(img, toRelayImageUrl(url), filename));
+        wrapper.appendChild(wrapImageInItem(img, relayUrl, filename));
+        img.src = relayUrl;
         slot++;
       });
 
@@ -1614,7 +1709,7 @@ function renderMergedProfileDetails(group, clickedItem) {
       });
     }
 
-    galleryImageUrls = result.images || [];
+    galleryImageUrls = normalizeImageList(result.images || []);
     const total = galleryImageUrls.length + (result.videos?.length || 0);
     setStatus(`Found ${total} media item${total === 1 ? '' : 's'}.`);
 
@@ -1627,6 +1722,10 @@ function renderMergedProfileDetails(group, clickedItem) {
       onTagClick: getProviderConfig(result.provider).hasTags
         ? tag => { toggleRedvelvetTag(tag); runRedvelvetSearch(); }
         : null,
+      onRescrape: () => {
+        detailCache.delete(`${member.provider}:${member.uid}`);
+        fetchImagesFromProfile(member, { single: true, forceScrape: true });
+      },
     });
 
     // Suggest phone links for newly loaded profiles
@@ -1722,28 +1821,35 @@ function renderImages(videos = []) {
 
   const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
   const toRelayImageUrl = (url) => `${relayBase}/image?url=${encodeURIComponent(url)}`;
-  const toDisplayImageUrl = (url) => {
-    if (!/^https?:\/\//i.test(url)) return url;
-    return toRelayImageUrl(url);
-  };
 
   const profileName = getProfileName();
   let slot = 0;
+  let cumulativeDelay = 0;
 
-  galleryImageUrls.forEach((url, idx) => {
+  galleryImageUrls.forEach((imgObj, idx) => {
+    const sourceUrl = imgObj.url;
+    // Use ?id= when the binary is confirmed stored in GridFS, otherwise fall back to ?url=
+    const relayUrl = imgObj.uid
+      ? `${relayBase}/image?id=${encodeURIComponent(imgObj.uid)}`
+      : toRelayImageUrl(sourceUrl);
+
     const img = document.createElement('img');
     img.alt       = 'gallery image';
-    img.src       = toDisplayImageUrl(url);
     img.className = 'masonry-img';
     img.style.animationDelay = `${slot * 60}ms`;
-    img.dataset.sourceUrl = url;
-    const filename = `${profileName}_${String(idx + 1).padStart(3, '0')}${inferImageExt(url)}`;
+    img.dataset.sourceUrl = sourceUrl;
+    const filename = `${profileName}_${String(idx + 1).padStart(3, '0')}${inferImageExt(sourceUrl)}`;
     img.onerror = function () {
       recordFailedImage(this.dataset.sourceUrl || this.currentSrc || '');
       this.closest('.masonry-item')?.remove() ?? this.remove();
     };
-    imagesContainer.appendChild(wrapImageInItem(img, toRelayImageUrl(url), filename));
+    imagesContainer.appendChild(wrapImageInItem(img, relayUrl, filename));
     slot++;
+
+    // Stagger src assignment — random 0–1000ms gap between each request
+    const delay = cumulativeDelay;
+    cumulativeDelay += Math.floor(Math.random() * 1000);
+    setTimeout(() => { img.src = relayUrl; }, delay);
   });
 
   // Videos (RedVelvet selfie videos from /selfies/up/)
@@ -2093,6 +2199,91 @@ document.getElementById('areaInput')
 
 dom.searchBtn.addEventListener('click', doSearch);
 dom.areaBtn.addEventListener('click', doAreaSearch);
+
+// ─── ADMIN MODAL ──────────────────────────────────────────────────────────
+
+function updateScrapeModeBtn() {
+  dom.scrapeModeBtn.textContent = scrapeMode ? 'ON' : 'OFF';
+  dom.scrapeModeBtn.classList.toggle('scrape-mode-active', scrapeMode);
+}
+
+async function openAdminModal() {
+  dom.adminModal.style.display = 'flex';
+  updateScrapeModeBtn();
+  // Load failed image count from DB
+  dom.adminFailedCount.textContent = '…';
+  dom.adminRetryBtn.disabled = true;
+  dom.adminRetryStatus.textContent = '';
+  try {
+    const res  = await fetch(`${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/image-errors`);
+    const data = await res.json();
+    const count = (data.errors || []).length;
+    dom.adminFailedCount.textContent = count;
+    dom.adminRetryBtn.disabled = count === 0;
+    dom.adminRetryBtn.dataset.errors = JSON.stringify(data.errors || []);
+  } catch {
+    dom.adminFailedCount.textContent = 'error';
+  }
+}
+
+function closeAdminModal() {
+  dom.adminModal.style.display = 'none';
+}
+
+dom.adminBtn.addEventListener('click', openAdminModal);
+dom.adminCloseBtn.addEventListener('click', closeAdminModal);
+dom.adminModal.addEventListener('click', e => { if (e.target === dom.adminModal) closeAdminModal(); });
+
+dom.scrapeModeBtn.addEventListener('click', () => {
+  scrapeMode = !scrapeMode;
+  updateScrapeModeBtn();
+});
+
+dom.adminRetryBtn.addEventListener('click', async () => {
+  const errors = JSON.parse(dom.adminRetryBtn.dataset.errors || '[]');
+  if (!errors.length) return;
+
+  dom.adminRetryBtn.disabled = true;
+  dom.adminRetryStatus.textContent = `Retrying 0 / ${errors.length}…`;
+
+  const relayBase = IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
+  let succeeded = 0;
+  let failed = 0;
+
+  for (let i = 0; i < errors.length; i++) {
+    const { url } = errors[i];
+    dom.adminRetryStatus.textContent = `Retrying ${i + 1} / ${errors.length}…`;
+    try {
+      const res = await fetch(`${relayBase}/image?url=${encodeURIComponent(url)}`);
+      if (res.ok) {
+        succeeded++;
+        failedImages.delete(url);
+        // Mark resolved in DB
+        fetch(`${relayBase}/image-errors`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ url, resolved: true }),
+        }).catch(() => {});
+      } else {
+        failed++;
+      }
+    } catch {
+      failed++;
+    }
+    // Random 0–1000ms between each retry request
+    await new Promise(r => setTimeout(r, Math.floor(Math.random() * 1000)));
+  }
+
+  renderFailedImagesPanel();
+  dom.adminRetryStatus.textContent = `Done — ${succeeded} recovered, ${failed} still failing.`;
+  // Refresh count
+  const remaining = errors.length - succeeded;
+  dom.adminFailedCount.textContent = remaining;
+  dom.adminRetryBtn.disabled = remaining === 0;
+  if (remaining > 0) {
+    dom.adminRetryBtn.dataset.errors = JSON.stringify(errors.filter(e => failedImages.has(e.url)));
+  }
+});
 
 // ── Filter modals ─────────────────────────────────────────────────────────
 

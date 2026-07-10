@@ -4,6 +4,10 @@ function relayBase() {
   return IMAGE_RELAY_BASE_URL.replace(/\/$/, '');
 }
 
+function scrapeParam(deps) {
+  return deps.scrapeMode ? '&scrape=true' : '';
+}
+
 async function relayGet(path, deps) {
   const { setStatus, searchBtn } = deps;
   try {
@@ -20,7 +24,7 @@ async function relayGet(path, deps) {
 export async function fetchEsaProfilesByNickname(nickname, deps) {
   const { setStatus } = deps;
   setStatus('<span class="spinner"></span>Fetching results…');
-  const data = await relayGet(`/esa-profiles?nickname=${encodeURIComponent(nickname)}`, deps);
+  const data = await relayGet(`/esa-profiles?nickname=${encodeURIComponent(nickname)}${scrapeParam(deps)}`, deps);
   if (!data) return [];
   setStatus('');
   return data.profiles || [];
@@ -29,7 +33,7 @@ export async function fetchEsaProfilesByNickname(nickname, deps) {
 export async function fetchEsaProfilesByArea(area, deps) {
   const { setStatus } = deps;
   setStatus('<span class="spinner"></span>Fetching area results…');
-  const data = await relayGet(`/esa-profiles?area=${encodeURIComponent(area)}`, deps);
+  const data = await relayGet(`/esa-profiles?area=${encodeURIComponent(area)}${scrapeParam(deps)}`, deps);
   if (!data) return [];
   setStatus('');
   return data.profiles || [];
@@ -42,7 +46,7 @@ export async function fetchEsaImagesFromProfile(uid, deps) {
 
   let data;
   try {
-    const res = await fetch(`${relayBase()}/esa-profile-details?id=${encodeURIComponent(uid)}`);
+    const res = await fetch(`${relayBase()}/esa-profile-details?id=${encodeURIComponent(uid)}${scrapeParam(deps)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     data = await res.json();
     if (data.error) throw new Error(data.error);

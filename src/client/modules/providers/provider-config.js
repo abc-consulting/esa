@@ -8,20 +8,17 @@ export const PROVIDER_CONFIG = {
   esa: {
     label: 'ESA',
     fallbackThumb: '',
-    detailUrl: (uid) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/esa-profile-details?id=${encodeURIComponent(uid)}`,
-    nicknameSearchUrl: (nickname) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/esa-profiles?nickname=${encodeURIComponent(nickname)}`,
-    // Delay before rendering images (ms) — ESA is faster to hydrate than RV
+    detailUrl: (uid, scrapeMode = false) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/esa-profile-details?id=${encodeURIComponent(uid)}${scrapeMode ? '&scrape=true' : ''}`,
+    nicknameSearchUrl: (nickname, scrapeMode = false) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/esa-profiles?nickname=${encodeURIComponent(nickname)}${scrapeMode ? '&scrape=true' : ''}`,
     imageRenderDelay: 500,
-    // ESA profiles don't have tags
     hasTags: false,
-    // ESA doesn't use cityBucket
     hasCityBucket: false,
   },
   redvelvet: {
     label: 'RV',
     fallbackThumb: 'https://redvelvet.co.za/Assets/images/noimage.png',
-    detailUrl: (uid) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/redvelvet-profile-details?id=${encodeURIComponent(uid)}`,
-    nicknameSearchUrl: (nickname) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/redvelvet-nickname-search?nickname=${encodeURIComponent(nickname)}&cityBucket=2`,
+    detailUrl: (uid, scrapeMode = false) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/redvelvet-profile-details?id=${encodeURIComponent(uid)}${scrapeMode ? '&scrape=true' : ''}`,
+    nicknameSearchUrl: (nickname, scrapeMode = false) => `${IMAGE_RELAY_BASE_URL.replace(/\/$/, '')}/redvelvet-nickname-search?nickname=${encodeURIComponent(nickname)}&cityBucket=2${scrapeMode ? '&scrape=true' : ''}`,
     imageRenderDelay: 300,
     hasTags: true,
     hasCityBucket: true,

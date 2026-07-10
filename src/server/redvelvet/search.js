@@ -2,6 +2,8 @@
 
 const { send } = require('../utils/http');
 const { CACHE_TTL_MS, RACIAL_TAGS } = require('../constants');
+const { getDb } = require('../db');
+const { upsertProfileCards } = require('../utils/db-profiles');
 const { getRedvelvetAreaProfiles, getAreaSetForCityBucket, filterProfilesByCityBucket, buildRedvelvetAreaHashMap, fetchRedvelvetProfilesWithPostback } = require('./areas');
 const { resolveRedvelvetTagUrl } = require('./tags');
 const { fetchProfileAgeAndBust } = require('./profile-details');
@@ -67,22 +69,80 @@ async function handleRedvelvetSearch(req, res) {
     return;
   }
 
-  const cityBucket = String(body.cityBucket || '2');
+  const cityBucket    = String(body.cityBucket || '2');
   const includedAreas = Array.isArray(body.areas?.included) ? body.areas.included.filter(Boolean) : [];
   const excludedAreas = Array.isArray(body.areas?.excluded) ? body.areas.excluded.filter(Boolean) : [];
   const includedTags  = Array.isArray(body.tags?.included)  ? body.tags.included.filter(Boolean)  : [];
   const excludedTags  = Array.isArray(body.tags?.excluded)  ? body.tags.excluded.filter(Boolean)  : [];
-  const ageMin  = body.age?.min  ? Number(body.age.min)  : null;
-  const ageMax  = body.age?.max  ? Number(body.age.max)  : null;
+  const ageMin   = body.age?.min  ? Number(body.age.min)  : null;
+  const ageMax   = body.age?.max  ? Number(body.age.max)  : null;
   const bustBand = body.bust?.band ? parseInt(body.bust.band) : null;
   const bustCup  = body.bust?.cup  ? String(body.bust.cup).toUpperCase() : null;
   const bustMin  = body.bust?.range?.min != null ? Number(body.bust.range.min) : null;
   const bustMax  = body.bust?.range?.max != null ? Number(body.bust.range.max) : null;
+  const scrape   = body.scrape === true;
 
   const hasIncludes = includedAreas.length > 0 || includedTags.length > 0;
   if (!hasIncludes) {
     send(res, 200, JSON.stringify({ count: 0, groups: [] }), { 'Content-Type': 'application/json; charset=utf-8' });
     return;
+  }
+
+  // DB-first path
+  if (!scrape) {
+    try {
+      const db  = await getDb();
+      const and = [{ provider: 'redvelvet' }];
+
+      if (includedAreas.length) {
+        const areaDocs = await db.collection('areas').find({ provider: 'redvelvet', name: { $in: includedAreas } }).toArray();
+        const areaIds  = areaDocs.map(a => a._id);
+        if (areaIds.length) and.push({ areaId: { $in: areaIds } });
+      }
+      if (excludedAreas.length) {
+        const areaDocs = await db.collection('areas').find({ provider: 'redvelvet', name: { $in: excludedAreas } }).toArray();
+        const areaIds  = areaDocs.map(a => a._id);
+        if (areaIds.length) and.push({ areaId: { $nin: areaIds } });
+      }
+
+      const racialIncluded = includedTags.filter(t => RACIAL_TAGS.has(t));
+      const otherIncluded  = includedTags.filter(t => !RACIAL_TAGS.has(t));
+      if (racialIncluded.length) and.push({ tags: { $in: racialIncluded } });
+      for (const tag of otherIncluded) and.push({ tags: tag });
+      if (excludedTags.length) and.push({ tags: { $nin: excludedTags } });
+
+      const docs = await db.collection('profiles').find(and.length > 1 ? { $and: and } : and[0]).toArray();
+      if (docs.length > 0) {
+        const areaIds2 = [...new Set(docs.filter(p => p.areaId).map(p => p.areaId))];
+        const areas2   = areaIds2.length ? await db.collection('areas').find({ _id: { $in: areaIds2 } }).toArray() : [];
+        const areaMap  = new Map(areas2.map(a => [String(a._id), a.name]));
+        let profiles   = docs.map(p => ({ provider: 'redvelvet', uid: p.providerUid, name: p.name, area: areaMap.get(String(p.areaId)) || '', profileUrl: p.profileUrl, thumbUrl: p.thumbUrl, phone: p.phone || '', age: p.age || '', bust: p.bust || '' }));
+
+        // Age/bust JS post-filter (age stored as string)
+        const hasBustFilter = bustBand !== null || bustCup !== null || bustMin !== null || bustMax !== null;
+        if (ageMin !== null || ageMax !== null || hasBustFilter) {
+          profiles = profiles.filter(p => {
+            if (ageMin !== null && Number(p.age) < ageMin) return false;
+            if (ageMax !== null && Number(p.age) > ageMax) return false;
+            if (hasBustFilter) {
+              const parsed = parseBust(p.bust);
+              if (!parsed) return false;
+              const vol = bustVolumeGroup(parsed.band, parsed.cup);
+              if (bustMin !== null && vol < bustMin) return false;
+              if (bustMax !== null && vol > bustMax) return false;
+              if (bustBand && bustCup && vol !== bustVolumeGroup(bustBand, bustCup)) return false;
+              else if (bustCup && parsed.cup !== bustCup) return false;
+              else if (bustBand && parsed.band !== bustBand) return false;
+            }
+            return true;
+          });
+        }
+
+        const flat = flattenWithSameNumber(profiles);
+        send(res, 200, JSON.stringify({ count: profiles.length, profiles: flat }), { 'Content-Type': 'application/json; charset=utf-8' });
+        return;
+      }
+    } catch { /* fall through to scrape */ }
   }
 
   try {
@@ -187,6 +247,7 @@ async function handleRedvelvetSearch(req, res) {
       });
     }
 
+    if (scrape) getDb().then(db => upsertProfileCards(db, profiles)).catch(() => {});
     const flatProfiles = flattenWithSameNumber(profiles);
     send(res, 200, JSON.stringify({ count: profiles.length, profiles: flatProfiles }), {
       'Content-Type': 'application/json; charset=utf-8',

@@ -3,6 +3,8 @@
 const { ESA_BASE_URL, ESA_GALLERY_URL } = require('../constants');
 const { fetchText, send } = require('../utils/http');
 const { flattenWithSameNumber } = require('../utils/groups');
+const { getDb } = require('../db');
+const { upsertProfileCards } = require('../utils/db-profiles');
 
 const MAX_PAGES = 50;
 
@@ -81,19 +83,53 @@ async function fetchEsaProfiles(galleryUrl) {
   return collected;
 }
 
+async function dbProfilesForArea(areaName) {
+  try {
+    const db      = await getDb();
+    const areaDoc = await db.collection('areas').findOne({ provider: 'esa', name: areaName });
+    if (!areaDoc) return null;
+    const docs = await db.collection('profiles').find({ provider: 'esa', areaId: areaDoc._id }).toArray();
+    return docs.map(p => ({ provider: 'esa', uid: p.providerUid, name: p.name, area: areaName, profileUrl: p.profileUrl, thumbUrl: p.thumbUrl, phone: p.phone || '' }));
+  } catch { return null; }
+}
+
+async function dbProfilesByNickname(nickname) {
+  try {
+    const db   = await getDb();
+    const docs = await db.collection('profiles').find({ provider: 'esa', name: { $regex: nickname, $options: 'i' } }).toArray();
+    if (!docs.length) return null;
+    const areaIds = [...new Set(docs.filter(p => p.areaId).map(p => p.areaId))];
+    const areas   = areaIds.length ? await db.collection('areas').find({ _id: { $in: areaIds } }).toArray() : [];
+    const areaMap = new Map(areas.map(a => [String(a._id), a.name]));
+    return docs.map(p => ({ provider: 'esa', uid: p.providerUid, name: p.name, area: areaMap.get(String(p.areaId)) || '', profileUrl: p.profileUrl, thumbUrl: p.thumbUrl, phone: p.phone || '' }));
+  } catch { return null; }
+}
+
 async function handleEsaProfilesByNickname(req, res) {
-  const urlObj = new URL(req.url, `http://localhost`);
+  const urlObj   = new URL(req.url, `http://localhost`);
   const nickname = urlObj.searchParams.get('nickname') || '';
+  const scrape   = urlObj.searchParams.get('scrape') === 'true';
+
   if (!nickname) {
     send(res, 400, JSON.stringify({ error: 'nickname required' }), { 'Content-Type': 'application/json; charset=utf-8' });
     return;
   }
 
+  if (!scrape) {
+    const dbResults = await dbProfilesByNickname(nickname);
+    if (dbResults && dbResults.length > 0) {
+      const flat = flattenWithSameNumber(dbResults);
+      send(res, 200, JSON.stringify({ count: dbResults.length, profiles: flat }), { 'Content-Type': 'application/json; charset=utf-8' });
+      return;
+    }
+  }
+
   try {
-    const url = `${ESA_GALLERY_URL}?sp%5Bnickname%5D=${encodeURIComponent(nickname)}&sp[city]=Cape+Town`;
+    const url      = `${ESA_GALLERY_URL}?sp%5Bnickname%5D=${encodeURIComponent(nickname)}&sp[city]=Cape+Town`;
     const profiles = await fetchEsaProfiles(url);
-    const flatProfiles = flattenWithSameNumber(profiles);
-    send(res, 200, JSON.stringify({ count: profiles.length, profiles: flatProfiles }), {
+    const flat     = flattenWithSameNumber(profiles);
+    if (scrape) getDb().then(db => upsertProfileCards(db, profiles)).catch(() => {});
+    send(res, 200, JSON.stringify({ count: profiles.length, profiles: flat }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });
@@ -104,17 +140,29 @@ async function handleEsaProfilesByNickname(req, res) {
 
 async function handleEsaProfilesByArea(req, res) {
   const urlObj = new URL(req.url, `http://localhost`);
-  const area = urlObj.searchParams.get('area') || '';
+  const area   = urlObj.searchParams.get('area')   || '';
+  const scrape = urlObj.searchParams.get('scrape') === 'true';
+
   if (!area) {
     send(res, 400, JSON.stringify({ error: 'area required' }), { 'Content-Type': 'application/json; charset=utf-8' });
     return;
   }
 
+  if (!scrape) {
+    const dbResults = await dbProfilesForArea(area);
+    if (dbResults && dbResults.length > 0) {
+      const flat = flattenWithSameNumber(dbResults);
+      send(res, 200, JSON.stringify({ count: dbResults.length, profiles: flat }), { 'Content-Type': 'application/json; charset=utf-8' });
+      return;
+    }
+  }
+
   try {
-    const url = `${ESA_GALLERY_URL}?sp[city]=Cape+Town&sp[area]=${encodeURIComponent(area)}`;
+    const url      = `${ESA_GALLERY_URL}?sp[city]=Cape+Town&sp[area]=${encodeURIComponent(area)}`;
     const profiles = await fetchEsaProfiles(url);
-    const flatProfiles = flattenWithSameNumber(profiles);
-    send(res, 200, JSON.stringify({ count: profiles.length, profiles: flatProfiles }), {
+    const flat     = flattenWithSameNumber(profiles);
+    if (scrape) getDb().then(db => upsertProfileCards(db, profiles)).catch(() => {});
+    send(res, 200, JSON.stringify({ count: profiles.length, profiles: flat }), {
       'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
     });

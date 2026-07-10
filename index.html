@@ -19,7 +19,33 @@
       <option value="esa">ESA</option>
       <option value="redvelvet">RedVelvet</option>
     </select>
+    <button id="adminBtn" class="scrape-mode-btn" title="Admin">Admin</button>
   </nav>
+
+  <!-- Admin modal -->
+  <div id="admin-modal" class="admin-modal" style="display:none">
+    <div class="admin-modal-box">
+      <div class="admin-modal-header">
+        <span class="admin-modal-title">Admin</span>
+        <button id="adminCloseBtn" class="admin-modal-close" aria-label="Close">&#10005;</button>
+      </div>
+      <div class="admin-modal-section">
+        <div class="admin-modal-row">
+          <span class="admin-modal-label">Scrape mode</span>
+          <button id="scrapeModeBtn" class="scrape-mode-btn scrape-mode-toggle">OFF</button>
+        </div>
+        <p class="admin-modal-hint">When ON, all searches and profile loads force a live scrape and upsert results into the database.</p>
+      </div>
+      <div class="admin-modal-section">
+        <div class="admin-modal-row">
+          <span class="admin-modal-label">Failed images</span>
+          <span id="adminFailedCount" class="admin-failed-count">–</span>
+        </div>
+        <button id="adminRetryBtn" class="admin-retry-btn" disabled>Re-fetch failed images</button>
+        <div id="adminRetryStatus" class="admin-retry-status"></div>
+      </div>
+    </div>
+  </div>
 
   <div class="search-bar">
     <input

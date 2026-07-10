@@ -6,6 +6,8 @@ const { normalizeAreaName } = require('../utils/normalize');
 const { REDVELVET_AREAS_URL, AREA_MAP_CACHE_TTL_MS, REQUEST_TIMEOUT_MS, POSTBACK_TIMEOUT_MS } = require('../constants');
 const { URL } = require('url');
 const { flattenWithSameNumber } = require('../utils/groups');
+const { getDb } = require('../db');
+const { upsertProfileCards } = require('../utils/db-profiles');
 
 let areaMapCache = null;
 let areaMapCacheTime = 0;
@@ -344,9 +346,10 @@ async function handleRedvelvetAreaLookup(req, res, serverBase) {
 }
 
 async function handleRedvelvetAreaProfiles(req, res, serverBase) {
-  const incoming = new URL(req.url, serverBase);
-  const rawName = (incoming.searchParams.get('name') || '').trim();
+  const incoming   = new URL(req.url, serverBase);
+  const rawName    = (incoming.searchParams.get('name')       || '').trim();
   const cityBucket = (incoming.searchParams.get('cityBucket') || '2').trim();
+  const scrape     = incoming.searchParams.get('scrape') === 'true';
 
   if (!rawName) {
     send(res, 400, JSON.stringify({ error: 'Missing area name' }), {
@@ -355,9 +358,27 @@ async function handleRedvelvetAreaProfiles(req, res, serverBase) {
     return;
   }
 
+  // DB-first path
+  if (!scrape) {
+    try {
+      const db      = await getDb();
+      const areaDoc = await db.collection('areas').findOne({ provider: 'redvelvet', name: normalizeAreaName(rawName) });
+      if (areaDoc) {
+        const docs = await db.collection('profiles').find({ provider: 'redvelvet', areaId: areaDoc._id }).toArray();
+        if (docs.length > 0) {
+          const profiles   = docs.map(p => ({ provider: 'redvelvet', uid: p.providerUid, name: p.name, area: rawName, profileUrl: p.profileUrl, thumbUrl: p.thumbUrl, phone: p.phone || '' }));
+          const flatProfiles = flattenWithSameNumber(profiles);
+          send(res, 200, JSON.stringify({ area: normalizeAreaName(rawName), areaUrl: areaDoc.url || '', count: profiles.length, profiles: flatProfiles }), { 'Content-Type': 'application/json; charset=utf-8' });
+          return;
+        }
+      }
+    } catch { /* fall through */ }
+  }
+
   try {
-    const result = await getRedvelvetAreaProfiles(rawName, cityBucket);
+    const result       = await getRedvelvetAreaProfiles(rawName, cityBucket);
     const flatProfiles = flattenWithSameNumber(result.profiles);
+    if (scrape) getDb().then(db => upsertProfileCards(db, result.profiles)).catch(() => {});
     send(res, 200, JSON.stringify({
       area: normalizeAreaName(rawName),
       areaUrl: result.areaUrl,

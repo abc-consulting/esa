@@ -18,6 +18,8 @@ Open `http://localhost:5510` in a browser. There is no build step — the fronte
 |---|---|---|
 | `RV_EMAIL` | Optional | RedVelvet account email for authenticated scraping |
 | `RV_PASSWORD` | Optional | RedVelvet account password for authenticated scraping |
+| `MONGODB_URL` | Optional | MongoDB connection string (default: `mongodb://localhost:27017`) |
+| `MONGODB_DB` | Optional | MongoDB database name (default: `esa`) |
 
 Without `RV_EMAIL`/`RV_PASSWORD` the server runs in anonymous mode; some profile details may be unavailable.
 
